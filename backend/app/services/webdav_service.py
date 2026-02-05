@@ -1,6 +1,6 @@
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 from webdav3.client import Client
@@ -12,6 +12,24 @@ logger = logging.getLogger(__name__)
 _cache: dict = {}
 _cache_time: float = 0
 CACHE_TTL = 60  # seconds
+
+_DEMO_PROJECTS = [
+    "nightly-app",
+    "nightly-sdk",
+    "release-app",
+    "release-sdk",
+    "feature-auth",
+    "hotfix-login",
+]
+
+_DEMO_BUILD_COUNTS = {
+    "nightly-app": 15,
+    "nightly-sdk": 12,
+    "release-app": 8,
+    "release-sdk": 6,
+    "feature-auth": 10,
+    "hotfix-login": 5,
+}
 
 
 def _get_client() -> Client:
@@ -29,8 +47,26 @@ def _invalidate_cache():
     _cache_time = 0
 
 
+def _generate_demo_builds(project: str) -> list[dict]:
+    """Generate deterministic fake builds for a demo project."""
+    count = _DEMO_BUILD_COUNTS.get(project, 8)
+    now = datetime.utcnow()
+    builds = []
+    for i in range(1, count + 1):
+        days_ago = (i * 40) // count  # spread 1~40 days
+        days_ago = max(1, days_ago)
+        builds.append({
+            "build_number": f"B{i:05d}",
+            "modified_at": now - timedelta(days=days_ago),
+        })
+    return builds
+
+
 def list_projects() -> list[str]:
     """List all project directories under the binary root."""
+    if get_config().demo_mode:
+        return sorted(_DEMO_PROJECTS)
+
     config = get_config().binary_server
     client = _get_client()
     root = config.binary_root_path.rstrip("/") + "/"
@@ -51,6 +87,9 @@ def list_projects() -> list[str]:
 def list_builds(project: str) -> list[dict]:
     """List all builds under a project with their modification times."""
     global _cache, _cache_time
+
+    if get_config().demo_mode:
+        return _generate_demo_builds(project)
 
     cache_key = f"builds:{project}"
     now = time.time()

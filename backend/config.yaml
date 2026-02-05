@@ -1,3 +1,5 @@
+demo_mode: true
+
 binary_server:
   webdav_url: "http://binary-server:8080"
   ssh_host: "binary-server"

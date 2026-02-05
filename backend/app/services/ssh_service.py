@@ -1,4 +1,5 @@
 import logging
+import random
 import re
 from pathlib import PurePosixPath
 
@@ -40,6 +41,17 @@ def close_connection():
 
 def get_disk_usage() -> dict:
     """Get disk usage for the binary root path using df."""
+    if get_config().demo_mode:
+        total = 500 * 1024 ** 3  # 500 GB
+        used = 425 * 1024 ** 3   # 425 GB
+        free = total - used
+        return {
+            "total_bytes": total,
+            "used_bytes": used,
+            "free_bytes": free,
+            "usage_percent": 85.0,
+        }
+
     config = get_config().binary_server
     client = _get_client()
     cmd = f"df -B1 {config.binary_root_path}"
@@ -71,6 +83,9 @@ def get_disk_usage() -> dict:
 
 def get_directory_size(path: str) -> int:
     """Get size of a directory in bytes using du."""
+    if get_config().demo_mode:
+        return random.randint(50, 500) * 1024 * 1024  # 50~500 MB
+
     client = _get_client()
     cmd = f"du -sb {path}"
     _, stdout, stderr = client.exec_command(cmd)
@@ -82,6 +97,10 @@ def get_directory_size(path: str) -> int:
 
 def delete_directory(path: str) -> bool:
     """Recursively delete a directory via SSH."""
+    if get_config().demo_mode:
+        logger.info("[DEMO] Would delete directory: %s", path)
+        return True
+
     client = _get_client()
     cmd = f"rm -rf {path}"
     _, stdout, stderr = client.exec_command(cmd)
@@ -96,6 +115,9 @@ def delete_directory(path: str) -> bool:
 
 def directory_exists(path: str) -> bool:
     """Check if a directory exists on the remote server."""
+    if get_config().demo_mode:
+        return True
+
     client = _get_client()
     cmd = f"test -d {path} && echo yes || echo no"
     _, stdout, _ = client.exec_command(cmd)

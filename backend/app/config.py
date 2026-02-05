@@ -38,6 +38,7 @@ class AuthConfig(BaseModel):
 
 
 class AppConfig(BaseModel):
+    demo_mode: bool = False
     binary_server: BinaryServerConfig = BinaryServerConfig()
     disk: DiskConfig = DiskConfig()
     retention_types: list[RetentionType] = []

@@ -1,0 +1,32 @@
+binary_server:
+  webdav_url: "http://binary-server:8080"
+  ssh_host: "binary-server"
+  ssh_port: 22
+  ssh_username: "binmanager"
+  ssh_key_path: "/home/app/.ssh/id_rsa"
+  binary_root_path: "/data/binaries"
+
+disk:
+  trigger_threshold_percent: 90
+  target_threshold_percent: 80
+  check_interval_minutes: 5
+
+retention_types:
+  - name: "nightly"
+    retention_days: 3
+    priority: 1
+  - name: "release"
+    retention_days: 30
+    priority: 3
+
+project_mappings:
+  - pattern: "nightly-*"
+    type: "nightly"
+  - pattern: "release-*"
+    type: "release"
+  - pattern: "*"
+    type: "nightly"
+
+auth:
+  shared_password: "changeme"
+  jwt_secret: "change-this-to-a-random-secret-in-production"

@@ -1,0 +1,26 @@
+services:
+  backend:
+    build: ./backend
+    container_name: binary-manager-backend
+    restart: unless-stopped
+    volumes:
+      - ./backend/config.yaml:/app/config.yaml
+      - backend-data:/app/data
+      - ${SSH_KEY_PATH:-~/.ssh/id_rsa}:/home/app/.ssh/id_rsa:ro
+    environment:
+      - CONFIG_PATH=/app/config.yaml
+      - DB_PATH=/app/data/binary_manager.db
+    expose:
+      - "8000"
+
+  frontend:
+    build: ./frontend
+    container_name: binary-manager-frontend
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8080}:80"
+    depends_on:
+      - backend
+
+volumes:
+  backend-data:

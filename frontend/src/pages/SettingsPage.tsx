@@ -79,7 +79,7 @@ export default function SettingsPage() {
     value: string | number
   ) => {
     const updated = [...retentionTypes];
-    (updated[i] as Record<string, string | number>)[field] = value;
+    updated[i] = { ...updated[i], [field]: value };
     setRetentionTypes(updated);
   };
 

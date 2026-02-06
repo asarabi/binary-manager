@@ -5,9 +5,9 @@ Android build binary retention manager with FastAPI backend and React frontend.
 Monitors disk usage on a remote binary server via WebDAV/SSH, auto-deletes builds based on retention policies.
 
 ## Tech Stack
-- **Backend**: Python 3.12, FastAPI, SQLAlchemy (SQLite), paramiko (SSH), webdavclient3
+- **Backend**: Python 3.12, FastAPI, SQLAlchemy (MySQL), paramiko (SSH), webdavclient3
 - **Frontend**: React 18, TypeScript, Vite, Tailwind CSS, lucide-react icons
-- **Deploy**: Docker Compose (backend + nginx frontend)
+- **Deploy**: Docker Compose (MySQL + backend + nginx frontend)
 
 ## Project Structure
 ```
@@ -15,7 +15,7 @@ backend/app/           # FastAPI application
   main.py              # Entry point, CORS, lifespan
   config.py            # YAML config loader (Pydantic models)
   auth.py              # JWT auth (shared password)
-  database.py          # SQLite engine + session
+  database.py          # MySQL engine + session
   models.py            # SQLAlchemy models (CleanupRun, CleanupLog)
   schemas.py           # Pydantic request/response schemas
   routers/             # API route handlers
@@ -57,6 +57,7 @@ cd frontend && npm run build
 
 ### Docker
 ```bash
+./setup.sh                       # Initial setup (creates ~/binary-manager-backup/)
 docker-compose up --build        # Full stack
 docker-compose up -d             # Detached
 docker-compose down              # Stop
@@ -103,6 +104,12 @@ docker-compose down              # Stop
 - `retention_types`: list of {name, retention_days, priority}
 - `project_mappings`: glob pattern → retention type mapping
 - `auth`: shared_password, jwt_secret
+
+## Data Storage
+- Config and DB stored at `~/binary-manager-backup/`
+- `config.yaml` - runtime configuration
+- `mysql/` - MySQL data directory
+- `setup.sh` initializes the folder structure
 
 ## Testing
 - Unit tests focus on `retention_engine.py` score computation

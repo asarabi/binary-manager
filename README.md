@@ -6,7 +6,7 @@ Android 빌드 바이너리 보관 관리 도구. 원격 바이너리 서버의 
 
 ```
 Browser → nginx(:8080) → React SPA
-                       → /api/* proxy → FastAPI(:8000) → SQLite
+                       → /api/* proxy → FastAPI(:8000) → MySQL(:3306)
                                                        → SSH → Binary Server (디스크 작업)
                                                        → WebDAV → Binary Server (파일 목록)
 ```
@@ -15,13 +15,13 @@ Browser → nginx(:8080) → React SPA
 - **FastAPI**: 보관 정책 로직, 스케줄링, 정리 작업 오케스트레이션 담당
 - **SSH**: 바이너리 서버의 디스크 사용량 확인 및 파일 삭제에 사용
 - **WebDAV**: 바이너리 서버의 빌드 목록 조회에 사용
-- **SQLite**: 정리 실행 이력 및 로그 저장
+- **MySQL**: 정리 실행 이력 및 로그 저장 (별도 컨테이너로 실행)
 
 ## 기술 스택
 
 | 계층 | 기술 |
 |---|---|
-| Backend | Python 3.12, FastAPI, SQLAlchemy (SQLite), paramiko (SSH), webdavclient3, APScheduler |
+| Backend | Python 3.12, FastAPI, SQLAlchemy (MySQL), paramiko (SSH), webdavclient3, APScheduler |
 | Frontend | React 18, TypeScript, Vite, Tailwind CSS, Recharts, lucide-react |
 | Infra | Docker Compose, nginx |
 
@@ -33,7 +33,7 @@ backend/
     main.py                  # FastAPI 진입점, CORS, lifespan
     config.py                # YAML 설정 로더 (Pydantic 모델)
     auth.py                  # JWT 인증 (공유 비밀번호)
-    database.py              # SQLite 엔진 + 세션
+    database.py              # MySQL 엔진 + 세션
     models.py                # SQLAlchemy 모델 (CleanupRun, CleanupLog)
     schemas.py               # Pydantic 요청/응답 스키마
     routers/
@@ -78,6 +78,20 @@ docker-compose.yml
 ```
 
 ## 빠른 시작
+
+### 초기 설정
+
+최초 실행 전 설정 파일과 DB를 초기화합니다:
+
+```bash
+./setup.sh
+```
+
+이 스크립트는 `~/binary-manager-backup/` 폴더에 다음을 생성합니다:
+- `config.yaml` - 런타임 설정 (소스의 기본 설정 복사)
+- `mysql/` - MySQL 데이터 디렉토리
+
+MySQL DB는 첫 실행 시 자동으로 초기화되며, 이미 파일이 존재하면 덮어쓰지 않아 기존 데이터가 보존됩니다.
 
 ### 데모 모드 (기본값)
 

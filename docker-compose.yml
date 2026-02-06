@@ -1,15 +1,36 @@
 services:
+  db:
+    image: mysql:8.0
+    container_name: binary-manager-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: binary_manager
+      MYSQL_USER: binary_manager
+      MYSQL_PASSWORD: binary_manager
+    volumes:
+      - ${HOME}/binary-manager-backup/mysql:/var/lib/mysql
+    expose:
+      - "3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   backend:
     build: ./backend
     container_name: binary-manager-backend
     restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
     volumes:
-      - ./backend/config.yaml:/app/config.yaml
-      - backend-data:/app/data
+      - ${HOME}/binary-manager-backup/config.yaml:/app/config.yaml
       - ${SSH_KEY_PATH:-~/.ssh/id_rsa}:/home/app/.ssh/id_rsa:ro
     environment:
       - CONFIG_PATH=/app/config.yaml
-      - DB_PATH=/app/data/binary_manager.db
+      - DATABASE_URL=mysql+pymysql://binary_manager:binary_manager@db:3306/binary_manager
     expose:
       - "8000"
 
@@ -21,6 +42,3 @@ services:
       - "${PORT:-8080}:80"
     depends_on:
       - backend
-
-volumes:
-  backend-data:

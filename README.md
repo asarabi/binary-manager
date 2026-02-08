@@ -281,36 +281,48 @@ health와 login을 제외한 모든 엔드포인트는 `Authorization: Bearer <t
 
 ## 개발
 
-### Backend
+### 개발 모드 (Hot-Reload)
+
+`docker-compose.override.yml`이 자동 적용되어 **코드 수정 시 재시작 없이 즉시 반영**됩니다.
 
 ```bash
-pip install -r backend/requirements.txt
+# 최초 1회
+./setup.sh
 
-# 테스트 실행
+# 개발 서버 시작
+docker compose up -d
+
+# 로그 확인
+docker compose logs -f backend    # 백엔드 로그
+docker compose logs -f frontend   # 프론트엔드 로그
+```
+
+http://localhost:8080 접속 → 비밀번호 `changeme`로 로그인
+
+| 변경 대상 | 반영 방식 | 명령어 |
+|-----------|----------|--------|
+| `backend/app/**/*.py` | uvicorn `--reload`로 자동 반영 | 없음 (저장만 하면 됨) |
+| `frontend/src/**` | vite HMR로 자동 반영 | 없음 (저장만 하면 됨) |
+| `config.yaml` | 컨테이너 재시작 필요 | `docker compose restart backend` |
+| `requirements.txt` | 이미지 재빌드 필요 | `docker compose up --build backend -d` |
+| `package.json` | 컨테이너 재시작 필요 (npm install이 시작 시 실행) | `docker compose restart frontend` |
+
+> **참고**: 프로덕션 배포 시 override 없이 실행하려면:
+> `docker compose -f docker-compose.yml up -d`
+
+### 테스트
+
+```bash
 cd backend && python -m pytest tests/ -v
-
-# 개발 서버 실행
-cd backend && uvicorn app.main:app --reload --port 8000
 ```
 
-### Frontend
+### Docker 명령어
 
 ```bash
-cd frontend && npm install
-
-# 개발 서버 실행 (/api를 localhost:8000으로 프록시)
-cd frontend && npm run dev
-
-# 프로덕션 빌드
-cd frontend && npm run build
-```
-
-### Docker
-
-```bash
-docker compose up --build       # 빌드 후 시작
-docker compose up -d            # 백그라운드 모드
+docker compose up -d            # 시작 (override 자동 적용)
 docker compose down             # 중지 및 제거
+docker compose ps               # 컨테이너 상태 확인
+docker compose logs -f          # 전체 로그 실시간 확인
 ```
 
 ## UI 페이지

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { getCleanupRuns, getLogs } from "../api/client";
-import { Loader2, ChevronDown, ChevronRight } from "lucide-react";
+import RetentionBadge from "../components/RetentionBadge";
+import { Loader2, ChevronDown, ChevronRight, Trash2, Eye } from "lucide-react";
 
 interface CleanupRun {
   id: number;
@@ -30,11 +31,17 @@ interface LogEntry {
 }
 
 function formatBytes(bytes: number): string {
-  if (bytes === 0) return "0 B";
+  if (bytes === 0) return "-";
   const k = 1024;
   const sizes = ["B", "KB", "MB", "GB", "TB"];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
+}
+
+function formatKST(dateStr: string): string {
+  return new Date(dateStr + "Z").toLocaleString("ko-KR", {
+    timeZone: "Asia/Seoul",
+  });
 }
 
 export default function LogsPage() {
@@ -91,49 +98,83 @@ export default function LogsPage() {
             <div key={run.id} className="bg-white rounded-lg shadow">
               <button
                 onClick={() => toggleRun(run.id)}
-                className="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50 rounded-lg"
+                className="w-full px-4 py-4 flex items-center justify-between hover:bg-gray-50 rounded-lg text-left"
               >
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-3">
                   {expandedRun === run.id ? (
-                    <ChevronDown size={16} />
+                    <ChevronDown size={16} className="text-gray-400" />
                   ) : (
-                    <ChevronRight size={16} />
+                    <ChevronRight size={16} className="text-gray-400" />
                   )}
-                  <span className="text-sm font-medium">
-                    Run #{run.id}
-                  </span>
-                  <span className="text-xs text-gray-500">
-                    {new Date(run.started_at).toLocaleString()}
-                  </span>
-                  <span
-                    className={`px-2 py-0.5 rounded text-xs font-medium ${
-                      run.status === "completed"
-                        ? "bg-green-100 text-green-700"
-                        : run.status === "failed"
-                          ? "bg-red-100 text-red-700"
-                          : "bg-yellow-100 text-yellow-700"
-                    }`}
-                  >
-                    {run.status}
-                  </span>
-                  {run.dry_run && (
-                    <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">
-                      dry run
+                  {run.dry_run ? (
+                    <Eye size={16} className="text-blue-500" />
+                  ) : (
+                    <Trash2 size={16} className="text-red-500" />
+                  )}
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-gray-900">
+                        {run.dry_run ? "Dry Run" : "Cleanup"}
+                      </span>
+                      <span
+                        className={`px-2 py-0.5 rounded text-xs font-medium ${
+                          run.status === "completed"
+                            ? "bg-green-100 text-green-700"
+                            : run.status === "failed"
+                              ? "bg-red-100 text-red-700"
+                              : "bg-yellow-100 text-yellow-700"
+                        }`}
+                      >
+                        {run.status}
+                      </span>
+                      <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-500">
+                        {run.trigger === "manual" ? "수동 실행" : "자동 스케줄"}
+                      </span>
+                    </div>
+                    <span className="text-xs text-gray-500">
+                      {formatKST(run.started_at)}
                     </span>
-                  )}
-                  <span className="text-xs text-gray-500">
-                    {run.trigger}
-                  </span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-4 text-sm text-gray-600">
-                  <span>{run.builds_deleted} builds</span>
-                  <span>{formatBytes(run.bytes_freed)}</span>
+                <div className="flex items-center gap-6 text-sm">
+                  <div className="text-right">
+                    <div className="text-xs text-gray-400">
+                      {run.dry_run ? "삭제 대상" : "삭제됨"}
+                    </div>
+                    <div className="font-semibold text-gray-900">
+                      {run.builds_deleted}개
+                    </div>
+                  </div>
+                  {!run.dry_run && (
+                    <div className="text-right">
+                      <div className="text-xs text-gray-400">확보 용량</div>
+                      <div className="font-semibold text-gray-900">
+                        {formatBytes(run.bytes_freed)}
+                      </div>
+                    </div>
+                  )}
                   {run.disk_usage_before != null &&
                     run.disk_usage_after != null && (
-                      <span>
-                        {run.disk_usage_before.toFixed(1)}% →{" "}
-                        {run.disk_usage_after.toFixed(1)}%
-                      </span>
+                      <div className="text-right">
+                        <div className="text-xs text-gray-400">디스크</div>
+                        <div className="font-semibold text-gray-900">
+                          {run.disk_usage_before.toFixed(1)}%
+                          {!run.dry_run && (
+                            <span>
+                              {" → "}
+                              <span
+                                className={
+                                  run.disk_usage_after < run.disk_usage_before
+                                    ? "text-green-600"
+                                    : ""
+                                }
+                              >
+                                {run.disk_usage_after.toFixed(1)}%
+                              </span>
+                            </span>
+                          )}
+                        </div>
+                      </div>
                     )}
                 </div>
               </button>
@@ -145,33 +186,49 @@ export default function LogsPage() {
                       {run.error_message}
                     </div>
                   )}
+                  <p className="text-xs text-gray-500 mb-3">
+                    {run.dry_run
+                      ? "아래 빌드들이 삭제 대상으로 선정되었습니다 (실제 삭제되지 않음)"
+                      : "아래 빌드들이 삭제되었습니다"}
+                    {" — score가 낮을수록 먼저 삭제"}
+                  </p>
                   {runLogs[run.id] ? (
                     runLogs[run.id].length > 0 ? (
                       <table className="min-w-full text-sm">
                         <thead>
                           <tr className="text-left text-xs text-gray-500 uppercase">
-                            <th className="pb-2">Project</th>
-                            <th className="pb-2">Build</th>
-                            <th className="pb-2">Type</th>
-                            <th className="pb-2">Age</th>
-                            <th className="pb-2">Size</th>
+                            <th className="pb-2 pr-4">#</th>
+                            <th className="pb-2 pr-4">Project</th>
+                            <th className="pb-2 pr-4">Build</th>
+                            <th className="pb-2 pr-4">Type</th>
+                            <th className="pb-2 pr-4">Age</th>
+                            {!run.dry_run && <th className="pb-2 pr-4">Size</th>}
                             <th className="pb-2">Score</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
-                          {runLogs[run.id].map((log) => (
+                          {runLogs[run.id].map((log, i) => (
                             <tr key={log.id}>
-                              <td className="py-1.5">{log.project_name}</td>
-                              <td className="py-1.5 font-mono">
+                              <td className="py-1.5 pr-4 text-gray-400">
+                                {i + 1}
+                              </td>
+                              <td className="py-1.5 pr-4 font-medium">
+                                {log.project_name}
+                              </td>
+                              <td className="py-1.5 pr-4 font-mono">
                                 {log.build_number}
                               </td>
-                              <td className="py-1.5">{log.retention_type}</td>
-                              <td className="py-1.5">
-                                {log.age_days.toFixed(1)}d
+                              <td className="py-1.5 pr-4">
+                                <RetentionBadge type={log.retention_type} />
                               </td>
-                              <td className="py-1.5">
-                                {formatBytes(log.size_bytes)}
+                              <td className="py-1.5 pr-4">
+                                {log.age_days.toFixed(1)}일
                               </td>
+                              {!run.dry_run && (
+                                <td className="py-1.5 pr-4">
+                                  {formatBytes(log.size_bytes)}
+                                </td>
+                              )}
                               <td className="py-1.5 font-mono">
                                 {log.score.toFixed(1)}
                               </td>
@@ -181,7 +238,7 @@ export default function LogsPage() {
                       </table>
                     ) : (
                       <p className="text-gray-500 text-sm">
-                        No deletions in this run
+                        삭제된 빌드가 없습니다
                       </p>
                     )
                   ) : (

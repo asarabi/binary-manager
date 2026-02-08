@@ -1,7 +1,9 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { getDashboardStats, triggerCleanup, getCleanupStatus } from "../api/client";
 import DiskUsageGauge from "../components/DiskUsageGauge";
-import { FolderOpen, Package, Clock, Play, Loader2 } from "lucide-react";
+import RetentionBadge from "../components/RetentionBadge";
+import { FolderOpen, Package, Clock, Play, Loader2, X, AlertTriangle } from "lucide-react";
 
 interface Stats {
   disk: {
@@ -16,11 +18,22 @@ interface Stats {
   last_cleanup_at: string | null;
 }
 
+interface DryRunTarget {
+  project: string;
+  build_number: string;
+  retention_type: string;
+  age_days: number;
+  score: number;
+}
+
 export default function DashboardPage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
   const [cleanupRunning, setCleanupRunning] = useState(false);
+  const [dryRunLoading, setDryRunLoading] = useState(false);
+  const [dryRunTargets, setDryRunTargets] = useState<DryRunTarget[] | null>(null);
   const [error, setError] = useState("");
+  const navigate = useNavigate();
 
   const fetchStats = async () => {
     try {
@@ -52,14 +65,22 @@ export default function DashboardPage() {
     return () => clearInterval(interval);
   }, [cleanupRunning]);
 
-  const handleCleanup = async (dryRun: boolean) => {
+  const handleDryRun = async () => {
+    setDryRunLoading(true);
     try {
-      await triggerCleanup(dryRun);
-      if (!dryRun) {
-        setCleanupRunning(true);
-      } else {
-        fetchStats();
-      }
+      const res = await triggerCleanup(true);
+      setDryRunTargets(res.data.targets);
+    } catch {
+      setError("Failed to trigger dry run");
+    } finally {
+      setDryRunLoading(false);
+    }
+  };
+
+  const handleCleanup = async () => {
+    try {
+      await triggerCleanup(false);
+      setCleanupRunning(true);
     } catch {
       setError("Failed to trigger cleanup");
     }
@@ -89,15 +110,19 @@ export default function DashboardPage() {
         <h2 className="text-2xl font-bold text-gray-900">Dashboard</h2>
         <div className="flex gap-2">
           <button
-            onClick={() => handleCleanup(true)}
-            disabled={cleanupRunning}
+            onClick={handleDryRun}
+            disabled={cleanupRunning || dryRunLoading}
             className="flex items-center gap-2 px-4 py-2 text-sm border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50"
           >
-            <Play size={14} />
+            {dryRunLoading ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <Play size={14} />
+            )}
             Dry Run
           </button>
           <button
-            onClick={() => handleCleanup(false)}
+            onClick={handleCleanup}
             disabled={cleanupRunning}
             className="flex items-center gap-2 px-4 py-2 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50"
           >
@@ -119,7 +144,10 @@ export default function DashboardPage() {
           freeBytes={stats.disk.free_bytes}
         />
 
-        <div className="bg-white rounded-lg shadow p-6">
+        <div
+          onClick={() => navigate("/binaries")}
+          className="bg-white rounded-lg shadow p-6 cursor-pointer hover:shadow-md transition-shadow"
+        >
           <h3 className="text-sm font-medium text-gray-500 mb-2">Projects</h3>
           <div className="flex items-center gap-3">
             <FolderOpen className="text-blue-500" size={28} />
@@ -129,7 +157,10 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div className="bg-white rounded-lg shadow p-6">
+        <div
+          onClick={() => navigate("/binaries")}
+          className="bg-white rounded-lg shadow p-6 cursor-pointer hover:shadow-md transition-shadow"
+        >
           <h3 className="text-sm font-medium text-gray-500 mb-2">
             Total Builds
           </h3>
@@ -149,12 +180,102 @@ export default function DashboardPage() {
             <Clock className="text-purple-500" size={28} />
             <span className="text-sm font-medium text-gray-900">
               {stats.last_cleanup_at
-                ? new Date(stats.last_cleanup_at).toLocaleString()
+                ? new Date(stats.last_cleanup_at + "Z").toLocaleString("ko-KR", {
+                    timeZone: "Asia/Seoul",
+                  })
                 : "Never"}
             </span>
           </div>
         </div>
       </div>
+
+      {/* Dry Run Results Modal */}
+      {dryRunTargets !== null && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col mx-4">
+            <div className="flex items-center justify-between p-4 border-b">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">
+                  Dry Run Results
+                </h3>
+                <p className="text-sm text-gray-500">
+                  {dryRunTargets.length} builds would be deleted (score order)
+                </p>
+              </div>
+              <button
+                onClick={() => setDryRunTargets(null)}
+                className="p-1 hover:bg-gray-100 rounded"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="overflow-auto flex-1">
+              {dryRunTargets.length === 0 ? (
+                <div className="p-8 text-center text-gray-500">
+                  No builds to delete
+                </div>
+              ) : (
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50 sticky top-0">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                        #
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                        Project
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                        Build
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                        Type
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                        Age
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                        Score
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {dryRunTargets.map((t, i) => (
+                      <tr key={`${t.project}-${t.build_number}`} className="hover:bg-gray-50">
+                        <td className="px-4 py-2 text-sm text-gray-400">
+                          {i + 1}
+                        </td>
+                        <td className="px-4 py-2 text-sm font-medium text-gray-900">
+                          {t.project}
+                        </td>
+                        <td className="px-4 py-2 text-sm font-mono text-gray-900">
+                          {t.build_number}
+                        </td>
+                        <td className="px-4 py-2 text-sm">
+                          <RetentionBadge type={t.retention_type} />
+                        </td>
+                        <td className="px-4 py-2 text-sm text-gray-600">
+                          {t.age_days}d
+                        </td>
+                        <td className="px-4 py-2 text-sm font-mono text-gray-500">
+                          {t.score}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+            <div className="p-4 border-t flex justify-end">
+              <button
+                onClick={() => setDryRunTargets(null)}
+                className="px-4 py-2 text-sm border border-gray-300 rounded-md hover:bg-gray-50"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

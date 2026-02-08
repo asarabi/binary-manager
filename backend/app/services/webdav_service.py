@@ -14,21 +14,15 @@ _cache_time: float = 0
 CACHE_TTL = 60  # seconds
 
 _DEMO_PROJECTS = [
-    "nightly-app",
-    "nightly-sdk",
-    "release-app",
-    "release-sdk",
-    "feature-auth",
-    "hotfix-login",
+    "ProjectA",
+    "ProjectB",
+    "Temp",
 ]
 
 _DEMO_BUILD_COUNTS = {
-    "nightly-app": 15,
-    "nightly-sdk": 12,
-    "release-app": 8,
-    "release-sdk": 6,
-    "feature-auth": 10,
-    "hotfix-login": 5,
+    "ProjectA": 10,
+    "ProjectB": 10,
+    "Temp": 10,
 }
 
 
@@ -49,14 +43,13 @@ def _invalidate_cache():
 
 def _generate_demo_builds(project: str) -> list[dict]:
     """Generate deterministic fake builds for a demo project."""
-    count = _DEMO_BUILD_COUNTS.get(project, 8)
+    count = _DEMO_BUILD_COUNTS.get(project, 10)
     now = datetime.utcnow()
     builds = []
     for i in range(1, count + 1):
-        days_ago = (i * 40) // count  # spread 1~40 days
-        days_ago = max(1, days_ago)
+        days_ago = i  # B0001=1일 전, B0002=2일 전, ..., B0010=10일 전
         builds.append({
-            "build_number": f"B{i:05d}",
+            "build_number": f"B{i:04d}",
             "modified_at": now - timedelta(days=days_ago),
         })
     return builds

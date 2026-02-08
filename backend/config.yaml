@@ -15,19 +15,22 @@ disk:
 
 retention_types:
   - name: "nightly"
-    retention_days: 3
+    retention_days: 7
     priority: 1
   - name: "release"
-    retention_days: 30
+    retention_days: 90
     priority: 3
+  - name: "temp"
+    retention_days: 1
+    priority: 0
 
 project_mappings:
-  - pattern: "nightly-*"
+  - pattern: "ProjectA"
     type: "nightly"
-  - pattern: "release-*"
+  - pattern: "ProjectB"
     type: "release"
-  - pattern: "*"
-    type: "nightly"
+  - pattern: "Temp"
+    type: "temp"
 
 auth:
   shared_password: "changeme"

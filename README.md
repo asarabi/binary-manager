@@ -4,12 +4,98 @@ Android 빌드 바이너리 보관 관리 도구. 원격 바이너리 서버의 
 
 ## 아키텍처
 
+### Deployment View
+
+```mermaid
+graph TB
+    subgraph Client
+        Browser["Browser"]
+    end
+
+    subgraph DockerHost["Docker Host"]
+        subgraph FrontendContainer["frontend · nginx:alpine · :8080"]
+            SPA["React SPA<br/>Static Files"]
+            Proxy["Reverse Proxy<br/>/api/* → backend:8000"]
+        end
+
+        subgraph BackendContainer["backend · python:3.12-slim · :8000"]
+            FastAPI["FastAPI · uvicorn"]
+            Routers["Routers<br/>auth | dashboard | binaries<br/>config | cleanup | logs"]
+            Scheduler["APScheduler<br/>주기적 디스크 체크"]
+            Engine["Retention Engine<br/>score 계산 · cleanup 실행"]
+            FastAPI --> Routers
+            Scheduler -->|"interval trigger"| Engine
+        end
+
+        subgraph DBContainer["db · mysql:8.0 · :3306"]
+            MySQL[("MySQL<br/>binary_manager<br/>cleanup_runs · cleanup_logs")]
+        end
+
+        Browser -->|"HTTP :8080"| SPA
+        Browser -->|"HTTP :8080 /api/*"| Proxy
+        Proxy -->|"proxy_pass :8000"| FastAPI
+        Routers -->|"SQLAlchemy pymysql"| MySQL
+        Engine -->|"SQLAlchemy pymysql"| MySQL
+    end
+
+    subgraph Volumes["Host Volumes"]
+        ConfigYaml["~/binary-manager-backup/config.yaml"]
+        MySQLData["~/binary-manager-backup/mysql/"]
+        SSHKey["~/.ssh/id_rsa (ro)"]
+    end
+
+    subgraph Remote["Binary Server · Remote"]
+        BinaryStore["/data/binaries/<br/>project-a/ · project-b/ · ..."]
+    end
+
+    ConfigYaml -.->|"bind mount"| BackendContainer
+    MySQLData -.->|"bind mount"| DBContainer
+    SSHKey -.->|"bind mount"| BackendContainer
+
+    Engine -->|"SSH :22 · df 디스크 사용량"| Remote
+    Engine -->|"WebDAV :8080 · 목록 조회 · 빌드 삭제"| Remote
 ```
-Browser → nginx(:8080) → React SPA
-                       → /api/* proxy → FastAPI(:8000) → MySQL(:3306)
-                                                       → SSH → Binary Server (디스크 작업)
-                                                       → WebDAV → Binary Server (파일 목록)
+
+### 클린업 흐름
+
+```mermaid
+sequenceDiagram
+    participant B as Browser
+    participant N as Nginx
+    participant F as FastAPI
+    participant DB as MySQL
+    participant S as Binary Server
+
+    rect rgb(40, 40, 60)
+        Note right of B: 사용자 요청
+        B->>N: GET /api/dashboard/stats
+        N->>F: proxy_pass
+        F->>DB: SELECT cleanup stats
+        DB-->>F: results
+        F-->>N: JSON
+        N-->>B: 200 OK
+    end
+
+    rect rgb(60, 40, 40)
+        Note right of F: 자동 클린업 (Scheduler)
+        F->>S: SSH: df -h (디스크 사용량)
+        S-->>F: 92% used
+        Note over F: 90% 초과 → 클린업 시작
+        F->>S: WebDAV: PROPFIND (빌드 목록)
+        S-->>F: build list + mtime
+        Note over F: score = priority×1000 + remaining_days×10
+        loop score 낮은 순서대로 삭제
+            F->>S: WebDAV: DELETE build
+            S-->>F: 200 OK
+            F->>S: SSH: df -h (재확인)
+            S-->>F: 83% used
+        end
+        Note over F: 80% 이하 → 클린업 종료
+        F->>DB: INSERT cleanup_runs, cleanup_logs
+    end
 ```
+
+### 컴포넌트 역할
 
 - **nginx**: React SPA를 서빙하고 `/api/*` 요청을 FastAPI 백엔드로 리버스 프록시
 - **FastAPI**: 보관 정책 로직, 스케줄링, 정리 작업 오케스트레이션 담당

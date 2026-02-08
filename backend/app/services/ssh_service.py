@@ -43,7 +43,7 @@ def get_disk_usage() -> dict:
     """Get disk usage for the binary root path using df."""
     if get_config().demo_mode:
         total = 500 * 1024 ** 3  # 500 GB
-        used = 425 * 1024 ** 3   # 425 GB
+        used = 425 * 1024 ** 3   # 425 GB (85%)
         free = total - used
         return {
             "total_bytes": total,

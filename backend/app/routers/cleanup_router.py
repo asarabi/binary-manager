@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from ..auth import get_current_user
 from ..database import SessionLocal, get_db
+from ..models import CleanupLog
 from ..schemas import CleanupStatusResponse, CleanupTriggerRequest
 from ..services import retention_engine
 
@@ -23,7 +24,24 @@ def trigger_cleanup(
     if request.dry_run:
         # Run dry_run synchronously
         run = retention_engine.run_cleanup(db, trigger="manual", dry_run=True)
-        return {"message": "Dry run completed", "run_id": run.id}
+        # Return deletion targets inline
+        logs = db.query(CleanupLog).filter(CleanupLog.run_id == run.id).order_by(CleanupLog.score).all()
+        targets = [
+            {
+                "project": log.project_name,
+                "build_number": log.build_number,
+                "retention_type": log.retention_type,
+                "age_days": round(log.age_days, 1),
+                "score": round(log.score, 1),
+            }
+            for log in logs
+        ]
+        return {
+            "message": "Dry run completed",
+            "run_id": run.id,
+            "builds_deleted": run.builds_deleted,
+            "targets": targets,
+        }
 
     # Run actual cleanup in background thread
     def _run():

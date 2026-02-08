@@ -133,9 +133,23 @@ def run_cleanup(db: Session, trigger: str = "manual", dry_run: bool = False) -> 
         builds_deleted = 0
         bytes_freed = 0
 
+        # For dry run, simulate disk reduction per build
+        if dry_run and len(all_builds) > 0:
+            total_bytes = disk_info["total_bytes"]
+            simulated_usage = current_usage
+            estimated_size_per_build = total_bytes * (current_usage - target_threshold) / 100 / len(all_builds) * 2
+        else:
+            simulated_usage = current_usage
+            estimated_size_per_build = 0
+
         for i, build in enumerate(all_builds):
             # Check if we've reached target
-            if not dry_run:
+            if dry_run:
+                if simulated_usage <= target_threshold:
+                    _progress = f"Target reached (simulated): {simulated_usage:.1f}% <= {target_threshold}%"
+                    logger.info(_progress)
+                    break
+            else:
                 disk_info = ssh_service.get_disk_usage()
                 current_usage = disk_info["usage_percent"]
                 if current_usage <= target_threshold:
@@ -146,7 +160,7 @@ def run_cleanup(db: Session, trigger: str = "manual", dry_run: bool = False) -> 
             path = ssh_service.build_path(build["project"], build["build_number"])
             size = ssh_service.get_directory_size(path) if not dry_run else 0
 
-            _progress = f"Deleting {build['project']}/{build['build_number']} (score: {build['score']:.1f}) [{i+1}/{len(all_builds)}]"
+            _progress = f"{'[DRY RUN] ' if dry_run else ''}Deleting {build['project']}/{build['build_number']} (score: {build['score']:.1f}) [{i+1}/{len(all_builds)}]"
             logger.info(_progress)
 
             if not dry_run:
@@ -170,6 +184,9 @@ def run_cleanup(db: Session, trigger: str = "manual", dry_run: bool = False) -> 
             builds_deleted += 1
             bytes_freed += size
 
+            if dry_run:
+                simulated_usage -= estimated_size_per_build / disk_info["total_bytes"] * 100
+
         # Finalize
         run.builds_deleted = builds_deleted
         run.bytes_freed = bytes_freed
@@ -181,7 +198,7 @@ def run_cleanup(db: Session, trigger: str = "manual", dry_run: bool = False) -> 
             run.disk_usage_after = final_disk["usage_percent"]
             webdav_service.invalidate_cache()
         else:
-            run.disk_usage_after = run.disk_usage_before
+            run.disk_usage_after = round(simulated_usage, 1)
 
         db.commit()
         _progress = f"Completed: {builds_deleted} builds deleted, {bytes_freed} bytes freed"

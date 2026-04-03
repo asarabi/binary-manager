@@ -48,6 +48,7 @@ class ProjectInfo(BaseModel):
     build_count: int
     oldest_build: Optional[str] = None
     newest_build: Optional[str] = None
+    server: str = ""
 
 
 class ProjectDetail(BaseModel):
@@ -68,17 +69,24 @@ class ProjectMappingSchema(BaseModel):
     type: str
 
 
+class BinaryServerSchema(BaseModel):
+    name: str = "default"
+    webdav_url: str = ""
+    disk_agent_url: str = ""
+    binary_root_path: str = "/data/binaries"
+    trigger_threshold_percent: int = 90
+    target_threshold_percent: int = 80
+    check_interval_minutes: int = 5
+
+
 class ConfigUpdate(BaseModel):
-    trigger_threshold_percent: Optional[int] = None
-    target_threshold_percent: Optional[int] = None
-    check_interval_minutes: Optional[int] = None
+    binary_servers: Optional[list[BinaryServerSchema]] = None
     retention_types: Optional[list[RetentionTypeSchema]] = None
     project_mappings: Optional[list[ProjectMappingSchema]] = None
 
 
 class ConfigResponse(BaseModel):
-    binary_server: dict
-    disk: dict
+    binary_servers: list[dict]
     retention_types: list[RetentionTypeSchema]
     project_mappings: list[ProjectMappingSchema]
 

@@ -1,17 +1,20 @@
 demo_mode: true
 
-binary_server:
-  webdav_url: "http://binary-server:8080"
-  ssh_host: "binary-server"
-  ssh_port: 22
-  ssh_username: "binmanager"
-  ssh_key_path: "/home/app/.ssh/id_rsa"
-  binary_root_path: "/data/binaries"
-
-disk:
-  trigger_threshold_percent: 90
-  target_threshold_percent: 80
-  check_interval_minutes: 5
+binary_servers:
+  - name: "custom"
+    webdav_url: "http://custom-server:8080"
+    disk_agent_url: "http://custom-server:9090"
+    binary_root_path: "/data/binaries"
+    trigger_threshold_percent: 90
+    target_threshold_percent: 80
+    check_interval_minutes: 5
+  - name: "mobile"
+    webdav_url: "http://mobile-server:8080"
+    disk_agent_url: "http://mobile-server:9090"
+    binary_root_path: "/data/binaries"
+    trigger_threshold_percent: 90
+    target_threshold_percent: 80
+    check_interval_minutes: 5
 
 retention_types:
   - name: "nightly"

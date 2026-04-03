@@ -9,7 +9,7 @@ from ..config import get_config
 from ..database import get_db
 from ..models import CleanupLog
 from ..schemas import BuildInfo, ProjectDetail, ProjectInfo
-from ..services import ssh_service, webdav_service
+from ..services import disk_agent_service, webdav_service
 
 router = APIRouter(prefix="/api/binaries", tags=["binaries"])
 
@@ -32,28 +32,34 @@ def _get_retention_type(project_name: str) -> tuple[str, int, int]:
 
 @router.get("", response_model=list[ProjectInfo])
 def list_projects(user: str = Depends(get_current_user)):
-    projects = webdav_service.list_projects()
+    config = get_config()
     result = []
-    for name in projects:
-        type_name, _, _ = _get_retention_type(name)
-        builds = webdav_service.list_builds(name)
-        build_numbers = [b["build_number"] for b in builds]
-        result.append(
-            ProjectInfo(
-                name=name,
-                retention_type=type_name,
-                build_count=len(builds),
-                oldest_build=min(build_numbers) if build_numbers else None,
-                newest_build=max(build_numbers) if build_numbers else None,
+    for server in config.binary_servers:
+        projects = webdav_service.list_projects(server)
+        for name in projects:
+            type_name, _, _ = _get_retention_type(name)
+            builds = webdav_service.list_builds(server, name)
+            build_numbers = [b["build_number"] for b in builds]
+            result.append(
+                ProjectInfo(
+                    name=name,
+                    retention_type=type_name,
+                    build_count=len(builds),
+                    oldest_build=min(build_numbers) if build_numbers else None,
+                    newest_build=max(build_numbers) if build_numbers else None,
+                    server=server.name,
+                )
             )
-        )
     return result
 
 
 @router.get("/{project}", response_model=ProjectDetail)
-def get_project_builds(project: str, user: str = Depends(get_current_user)):
+def get_project_builds(project: str, server_name: str = "", user: str = Depends(get_current_user)):
+    config = get_config()
+    server = _find_server(config, server_name, project)
+
     type_name, retention_days, priority = _get_retention_type(project)
-    builds = webdav_service.list_builds(project)
+    builds = webdav_service.list_builds(server, project)
 
     now = datetime.utcnow()
     build_infos = []
@@ -82,22 +88,25 @@ def get_project_builds(project: str, user: str = Depends(get_current_user)):
 def delete_build(
     project: str,
     build: str,
+    server_name: str = "",
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    path = ssh_service.build_path(project, build)
-    if not ssh_service.directory_exists(path):
+    config = get_config()
+    server = _find_server(config, server_name, project)
+
+    if not webdav_service.build_exists(server, project, build):
         raise HTTPException(status_code=404, detail="Build not found")
 
-    size = ssh_service.get_directory_size(path)
-    success = ssh_service.delete_directory(path)
+    rel_path = f"{project}/{build}"
+    size = disk_agent_service.get_directory_size(server, rel_path)
+    success = webdav_service.delete_build(server, project, build)
     if not success:
         raise HTTPException(status_code=500, detail="Failed to delete build")
 
-    # Log the manual deletion
     type_name, retention_days, _ = _get_retention_type(project)
     log = CleanupLog(
-        run_id=0,  # 0 = manual
+        run_id=0,
         project_name=project,
         build_number=build,
         retention_type=type_name,
@@ -111,3 +120,13 @@ def delete_build(
 
     webdav_service.invalidate_cache()
     return {"message": f"Deleted {project}/{build}", "size_bytes": size}
+
+
+def _find_server(config, server_name: str, project: str):
+    """Find server by name, or search for the project across servers."""
+    if server_name:
+        for s in config.binary_servers:
+            if s.name == server_name:
+                return s
+    # Default: first server (or search)
+    return config.binary_servers[0]

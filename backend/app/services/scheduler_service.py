@@ -29,7 +29,8 @@ def _scheduled_check():
 def start_scheduler():
     global _scheduler
     config = get_config()
-    interval = config.disk.check_interval_minutes
+    intervals = [s.check_interval_minutes for s in config.binary_servers] or [5]
+    interval = min(intervals)
 
     _scheduler = BackgroundScheduler()
     _scheduler.add_job(

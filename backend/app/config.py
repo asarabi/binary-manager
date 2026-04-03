@@ -7,15 +7,10 @@ from pydantic import BaseModel
 
 
 class BinaryServerConfig(BaseModel):
+    name: str = "default"
     webdav_url: str = "http://binary-server:8080"
-    ssh_host: str = "binary-server"
-    ssh_port: int = 22
-    ssh_username: str = "binmanager"
-    ssh_key_path: str = "/home/app/.ssh/id_rsa"
+    disk_agent_url: str = "http://binary-server:9090"
     binary_root_path: str = "/data/binaries"
-
-
-class DiskConfig(BaseModel):
     trigger_threshold_percent: int = 90
     target_threshold_percent: int = 80
     check_interval_minutes: int = 5
@@ -39,8 +34,7 @@ class AuthConfig(BaseModel):
 
 class AppConfig(BaseModel):
     demo_mode: bool = False
-    binary_server: BinaryServerConfig = BinaryServerConfig()
-    disk: DiskConfig = DiskConfig()
+    binary_servers: list[BinaryServerConfig] = [BinaryServerConfig()]
     retention_types: list[RetentionType] = []
     project_mappings: list[ProjectMapping] = []
     auth: AuthConfig = AuthConfig()

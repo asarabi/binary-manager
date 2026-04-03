@@ -18,27 +18,17 @@ services:
       timeout: 5s
       retries: 5
 
-  backend:
-    build: ./backend
-    container_name: binary-manager-backend
+  app:
+    build: .
+    container_name: binary-manager-app
     restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
     volumes:
       - ${HOME}/binary-manager-backup/config.yaml:/app/config.yaml
-      - ${SSH_KEY_PATH:-~/.ssh/id_rsa}:/home/app/.ssh/id_rsa:ro
     environment:
       - CONFIG_PATH=/app/config.yaml
       - DATABASE_URL=mysql+pymysql://binary_manager:binary_manager@db:3306/binary_manager
-    expose:
-      - "8000"
-
-  frontend:
-    build: ./frontend
-    container_name: binary-manager-frontend
-    restart: unless-stopped
     ports:
       - "${PORT:-8080}:80"
-    depends_on:
-      - backend

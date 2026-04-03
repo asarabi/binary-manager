@@ -43,6 +43,7 @@ export const deleteBuild = (project: string, build: string) =>
 export const getConfig = () => api.get("/config");
 export const updateConfig = (data: Record<string, unknown>) =>
   api.put("/config", data);
+export const testConnection = () => api.post("/config/test-connection");
 
 // Cleanup
 export const triggerCleanup = (dryRun: boolean) =>

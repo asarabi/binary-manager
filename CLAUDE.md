@@ -22,7 +22,7 @@ disk-agent/            # Standalone disk agent for binary servers
 backend/app/           # FastAPI application
   main.py              # Entry point, CORS, lifespan
   config.py            # YAML config loader (Pydantic models)
-  auth.py              # JWT auth (shared password)
+  auth.py              # JWT auth (username/password with admin/user roles)
   database.py          # MySQL engine + session
   models.py            # SQLAlchemy models (CleanupRun, CleanupLog)
   schemas.py           # Pydantic request/response schemas
@@ -74,10 +74,10 @@ docker compose down              # Stop
 ## Key Design Decisions
 
 ### Retention Score Algorithm
-`score = priority * 1000 + remaining_days * 10`
+`score = retention_days - age_days` (i.e. remaining days)
 - Lower score = deleted first
-- Priority groups builds by type (nightly=1, release=3)
-- Within same priority, more-expired builds deleted first
+- Negative score means expired (deleted before unexpired builds)
+- Custom projects can have longer retention_days than defaults
 
 ### Hysteresis Cleanup (per-server)
 - Trigger cleanup at configurable % disk usage (default 90%)
@@ -107,11 +107,14 @@ docker compose down              # Stop
 
 ## Config File (`backend/config.yaml`)
 - `binary_servers`: list of servers, each with:
-  - `name`, `webdav_url`, `disk_agent_url`, `binary_root_path`
+  - `name`, `webdav_url`, `disk_agent_url`, `binary_root_path`, `project_depth`
   - `trigger_threshold_percent`, `target_threshold_percent`, `check_interval_minutes`
-- `retention_types`: list of {name, retention_days, priority}
-- `project_mappings`: glob pattern → retention type mapping
-- `auth`: shared_password, jwt_secret
+  - `custom_projects`: list of {path, retention_days} for per-project overrides
+- `retention`: global defaults
+  - `default_days`: retention for non-custom projects (default: 7)
+  - `custom_default_days`: default when adding custom projects (default: 30)
+  - `log_retention_days`: cleanup log retention period (default: 30)
+- `auth`: users list [{username, password, role}], jwt_secret
 
 ## Data Storage
 - Config and DB stored at `~/binary-manager-backup/`

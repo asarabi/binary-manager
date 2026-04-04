@@ -23,7 +23,7 @@ Browser ──:8080──▶ nginx ──/api/*──▶ FastAPI ──▶ MySQL
 1. Disk Agent에 디스크 사용량 조회 ─────────────▶ 92% 응답
 2. 90% 초과 → 클린업 시작
 3. WebDAV로 빌드 목록 조회 (mtime 포함)
-4. score = priority × 1000 + remaining_days × 10 계산
+4. score = retention_days − age_days (남은 일수) 계산
 5. score 낮은 순서대로 반복:
    ├── WebDAV DELETE (빌드 삭제)
    ├── Disk Agent로 디스크 재확인 ──────────────▶ 83% 응답
@@ -64,7 +64,7 @@ backend/
   app/
     main.py                  # FastAPI 진입점, CORS, lifespan
     config.py                # YAML 설정 로더 (Pydantic 모델)
-    auth.py                  # JWT 인증 (공유 비밀번호)
+    auth.py                  # JWT 인증 (사용자명/비밀번호, admin/user 역할)
     database.py              # MySQL 엔진 + 세션
     models.py                # SQLAlchemy 모델 (CleanupRun, CleanupLog)
     schemas.py               # Pydantic 요청/응답 스키마
@@ -126,7 +126,7 @@ git clone <repo-url> && cd binary-manager
 docker compose up --build
 ```
 
-http://localhost:8080 접속 → 비밀번호 `changeme`로 로그인
+http://localhost:8080 접속 → `cicd` / `tmxkqjrtm1@` (admin) 또는 `share` / `share` (user)로 로그인
 
 종료:
 
@@ -204,17 +204,32 @@ git clone <repo-url> && cd binary-manager
 ```yaml
 demo_mode: false
 
+retention:
+  default_days: 7
+  custom_default_days: 30
+  log_retention_days: 30
+
 binary_servers:
   - name: "custom"
     webdav_url: "http://custom-server:8080"
     disk_agent_url: "http://custom-server:9090"
     binary_root_path: "/data/binaries"
+    project_depth: 2
     trigger_threshold_percent: 90
     target_threshold_percent: 80
     check_interval_minutes: 5
+    custom_projects:
+      - path: "automotive/release"
+        retention_days: 90
 
 auth:
-  shared_password: "your-secure-password"
+  users:
+    - username: "admin"
+      password: "your-secure-password"
+      role: "admin"
+    - username: "viewer"
+      password: "viewer-password"
+      role: "user"
   jwt_secret: "your-random-secret"
 ```
 
@@ -222,7 +237,7 @@ auth:
 docker compose up --build -d
 ```
 
-http://localhost:8080 접속 → Settings 페이지에서 **연결 테스트**로 바이너리 서버 연결 확인
+http://localhost:8080 접속 → admin 계정으로 로그인 후 Settings 페이지에서 **연결 테스트**로 바이너리 서버 연결 확인
 
 종료:
 
@@ -241,25 +256,29 @@ docker compose down
 | | `webdav_url` | 파일 목록 조회/삭제용 WebDAV 엔드포인트 |
 | | `disk_agent_url` | 디스크 사용량 조회용 Disk Agent 엔드포인트 |
 | | `binary_root_path` | 서버상 바이너리 루트 디렉토리 |
+| | `project_depth` | 프로젝트 디렉토리 깊이 (기본값: 1) |
 | | `trigger_threshold_percent` | 정리 시작 디스크 사용률 (기본값: 90) |
 | | `target_threshold_percent` | 정리 중단 디스크 사용률 (기본값: 80) |
 | | `check_interval_minutes` | 디스크 사용량 점검 주기 (기본값: 5분) |
-| `retention_types` | `name`, `retention_days`, `priority` | 이름별 보관 정책 |
-| `project_mappings` | `pattern`, `type` | glob 패턴 → 보관 유형 매핑 |
-| `auth` | `shared_password`, `jwt_secret` | 인증 자격 증명 |
+| | `custom_projects[]` | 프로젝트별 보관 기간 재정의 (`path`, `retention_days`) |
+| `retention` | `default_days` | 기본 보관 기간 (기본값: 7일) |
+| | `custom_default_days` | Custom project 추가 시 기본값 (기본값: 30일) |
+| | `log_retention_days` | 클린업 로그 보관 기간 (기본값: 30일) |
+| `auth` | `users[]` | 계정 목록 (`username`, `password`, `role`: admin/user) |
+| | `jwt_secret` | JWT 서명 키 |
 
 ## 보관 알고리즘
 
 ### 점수 공식
 
 ```
-score = priority * 1000 + remaining_days * 10
+score = retention_days - age_days  (남은 일수)
 ```
 
 - **낮은 점수 = 먼저 삭제**
-- `priority`로 빌드 유형별 그룹화 (예: nightly=1, release=3)
-- 동일 priority 내에서 만료일에 가까운 빌드가 먼저 삭제됨
-- 만료된 빌드는 `remaining_days`가 음수이므로 점수가 더 낮아짐
+- 만료된 빌드는 score가 음수이므로 우선 삭제됨
+- 동일 보관 기간 내에서 오래된 빌드가 먼저 삭제됨
+- Custom project는 더 긴 retention_days를 가질 수 있어 보호됨
 
 ### 히스테리시스 (서버별 설정)
 
@@ -282,14 +301,14 @@ health와 login을 제외한 모든 엔드포인트는 `Authorization: Bearer <t
 | 메서드 | 경로 | 설명 |
 |---|---|---|
 | GET | `/api/health` | 헬스 체크 |
-| POST | `/api/auth/login` | 비밀번호로 로그인, JWT 토큰 반환 |
-| GET | `/api/dashboard/stats` | 디스크 사용량, 프로젝트/빌드 수, 정리 상태 |
-| GET | `/api/binaries` | 보관 정보 포함 전체 프로젝트 목록 |
-| GET | `/api/binaries/{project}` | 프로젝트별 빌드 목록 (점수 포함) |
-| DELETE | `/api/binaries/{project}/{build}` | 특정 빌드 삭제 |
+| POST | `/api/auth/login` | 사용자명/비밀번호 로그인, JWT 토큰 + 역할 반환 |
+| GET | `/api/dashboard/stats` | 서버별 디스크 사용량, 프로젝트/빌드 수, 정리 상태 |
+| GET | `/api/binaries` | 보관 정보 포함 전체 프로젝트 목록 (server 필터 지원) |
+| GET | `/api/binaries/detail/{project}` | 프로젝트별 빌드 목록 (남은 일수 포함) |
+| DELETE | `/api/binaries/detail/{project}/{build}` | 특정 빌드 삭제 |
 | GET | `/api/config` | 현재 설정 조회 |
-| PUT | `/api/config` | 설정 수정 |
-| POST | `/api/config/test-connection` | 서버 연결 테스트 (WebDAV + Disk Agent) |
+| PUT | `/api/config` | 설정 수정 (admin만 가능) |
+| POST | `/api/config/test-connection` | 서버 연결 테스트 (admin만 가능) |
 | POST | `/api/cleanup/trigger` | 수동 정리 실행 (dry-run 지원) |
 | GET | `/api/cleanup/status` | 현재 정리 작업 상태 조회 |
 | GET | `/api/logs/runs` | 정리 실행 이력 (페이지네이션) |
@@ -324,7 +343,7 @@ docker compose up --build -d
 docker compose logs -f app
 ```
 
-http://localhost:8080 접속 → 비밀번호 `changeme`로 로그인
+http://localhost:8080 접속 → `cicd` / `tmxkqjrtm1@` (admin) 또는 `share` / `share` (user)로 로그인
 
 | 변경 대상 | 반영 방식 |
 |-----------|----------|
@@ -352,8 +371,8 @@ docker compose logs -f app      # 앱 로그 실시간 확인
 
 | 페이지 | 설명 |
 |---|---|
-| **Login** | 공유 비밀번호 인증 |
-| **Dashboard** | 디스크 사용량 게이지, 프로젝트/빌드 통계, 수동 정리 실행 (dry-run 옵션 포함) |
-| **Binaries** | 보관 유형 및 빌드 수가 포함된 프로젝트 테이블; 개별 빌드의 점수 및 만료일 확인 |
-| **Settings** | 서버 관리 (WebDAV/Agent URL, 디스크 임계값), 보관 유형, 프로젝트 매핑 편집, 연결 테스트 |
-| **Logs** | 정리 실행 이력 및 실행별 상세 로그 |
+| **Login** | 사용자명/비밀번호 인증 (admin/user 역할 구분) |
+| **Dashboard** | 서버별 디스크 사용량 게이지, 프로젝트/빌드 통계, 수동 정리 실행 (dry-run 포함) |
+| **Binaries** | All/서버별 탭으로 프로젝트 목록 조회; 빌드별 남은 일수 및 만료 상태 확인 |
+| **Settings** | 서버 관리, custom project별 보관 기간, 로그 보관 기간 설정, 연결 테스트 (admin 전용) |
+| **Logs** | 정리 실행 이력, 서버별 그룹핑된 상세 로그 |

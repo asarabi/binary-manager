@@ -13,9 +13,10 @@ interface Project {
 
 interface Props {
   projects: Project[];
+  showServer?: boolean;
 }
 
-export default function ProjectTable({ projects }: Props) {
+export default function ProjectTable({ projects, showServer }: Props) {
   const navigate = useNavigate();
 
   return (
@@ -26,6 +27,11 @@ export default function ProjectTable({ projects }: Props) {
             <th className="px-4 py-3 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wider">
               Project
             </th>
+            {showServer && (
+              <th className="px-4 py-3 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wider">
+                Server
+              </th>
+            )}
             <th className="px-4 py-3 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wider">
               Retention
             </th>
@@ -51,6 +57,13 @@ export default function ProjectTable({ projects }: Props) {
               <td className="px-4 py-3 text-[13px] font-medium text-gray-900">
                 {p.name}
               </td>
+              {showServer && (
+                <td className="px-4 py-3">
+                  <span className="text-[11px] font-medium text-gray-500 bg-gray-50 px-2 py-0.5 rounded">
+                    {p.server}
+                  </span>
+                </td>
+              )}
               <td className="px-4 py-3">
                 <RetentionBadge
                   isCustom={p.is_custom}

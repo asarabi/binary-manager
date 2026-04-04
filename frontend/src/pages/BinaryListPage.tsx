@@ -32,7 +32,7 @@ export default function BinaryListPage() {
         );
         setServerNames(names);
         setProjects(projectsRes.data);
-        if (names.length > 0) setActiveServer(names[0]);
+        setActiveServer("all");
       } catch {
         setError("Failed to load data");
       } finally {
@@ -58,14 +58,27 @@ export default function BinaryListPage() {
     );
   }
 
-  const filtered = projects.filter((p) => p.server === activeServer);
+  const filtered =
+    activeServer === "all"
+      ? projects
+      : projects.filter((p) => p.server === activeServer);
 
   return (
     <div>
       <div className="flex items-center justify-between mb-8">
         <h2 className="text-xl font-semibold text-gray-900">Binaries</h2>
-        {serverNames.length > 1 && (
+        {serverNames.length > 0 && (
           <div className="flex bg-gray-100 rounded-lg p-0.5">
+            <button
+              onClick={() => setActiveServer("all")}
+              className={`px-3.5 py-1.5 text-[13px] font-medium rounded-md transition-all ${
+                activeServer === "all"
+                  ? "bg-white text-gray-900 shadow-sm"
+                  : "text-gray-400 hover:text-gray-600"
+              }`}
+            >
+              All
+            </button>
             {serverNames.map((name) => (
               <button
                 key={name}
@@ -84,7 +97,7 @@ export default function BinaryListPage() {
       </div>
 
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-        <ProjectTable projects={filtered} />
+        <ProjectTable projects={filtered} showServer={activeServer === "all"} />
         {filtered.length === 0 && (
           <p className="text-[13px] text-gray-400 text-center py-12">
             No projects found on this server.

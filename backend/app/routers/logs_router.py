@@ -50,6 +50,7 @@ def list_logs(
                 id=log.id,
                 run_id=log.run_id,
                 deleted_at=log.deleted_at,
+                server_name=log.server_name,
                 project_name=log.project_name,
                 build_number=log.build_number,
                 retention_type=log.retention_type,

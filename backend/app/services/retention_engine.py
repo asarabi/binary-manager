@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy.orm import Session
 
@@ -144,6 +144,7 @@ def _run_cleanup_for_server(
 
         log = CleanupLog(
             run_id=run.id,
+            server_name=server.name,
             project_name=build["project"],
             build_number=build["build_number"],
             retention_type="custom" if build["is_custom"] else "default",
@@ -211,6 +212,9 @@ def run_cleanup(db: Session, trigger: str = "manual", dry_run: bool = False) -> 
             run.disk_usage_after = disk_info["usage_percent"]
 
         db.commit()
+        # Purge old logs
+        _purge_old_logs(db, config.retention.log_retention_days)
+
         _progress = f"Completed: {total_deleted} builds deleted, {total_freed} bytes freed"
         logger.info(_progress)
         return run
@@ -225,3 +229,16 @@ def run_cleanup(db: Session, trigger: str = "manual", dry_run: bool = False) -> 
     finally:
         _cleanup_running = False
         _current_run_id = None
+
+
+def _purge_old_logs(db: Session, retention_days: int) -> None:
+    """Delete cleanup runs and logs older than retention_days."""
+    cutoff = datetime.utcnow() - timedelta(days=retention_days)
+    old_runs = db.query(CleanupRun).filter(CleanupRun.started_at < cutoff).all()
+    if not old_runs:
+        return
+    old_run_ids = [r.id for r in old_runs]
+    deleted_logs = db.query(CleanupLog).filter(CleanupLog.run_id.in_(old_run_ids)).delete(synchronize_session=False)
+    deleted_runs = db.query(CleanupRun).filter(CleanupRun.id.in_(old_run_ids)).delete(synchronize_session=False)
+    db.commit()
+    logger.info("Purged %d old runs and %d logs (older than %d days)", deleted_runs, deleted_logs, retention_days)

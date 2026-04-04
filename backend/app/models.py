@@ -28,6 +28,7 @@ class CleanupLog(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     run_id: Mapped[int] = mapped_column(Integer, index=True)
     deleted_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    server_name: Mapped[str] = mapped_column(String(100), default="")
     project_name: Mapped[str] = mapped_column(String(255))
     build_number: Mapped[str] = mapped_column(String(50))
     retention_type: Mapped[str] = mapped_column(String(50))

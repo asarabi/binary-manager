@@ -105,6 +105,7 @@ def delete_build(
 
     log = CleanupLog(
         run_id=0,
+        server_name=srv.name,
         project_name=project,
         build_number=build,
         retention_type="custom" if is_custom_project(srv, project) else "default",

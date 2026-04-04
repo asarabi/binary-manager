@@ -36,10 +36,7 @@ class UserAccount(BaseModel):
 
 
 class AuthConfig(BaseModel):
-    users: list[UserAccount] = [
-        UserAccount(username="cicd", password="tmxkqjrtm1@", role="admin"),
-        UserAccount(username="share", password="share", role="user"),
-    ]
+    users: list[UserAccount] = []
     jwt_secret: str = "change-this-to-a-random-secret-in-production"
 
 

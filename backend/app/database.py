@@ -31,16 +31,14 @@ def init_db():
 
 def _migrate(eng):
     """Apply schema migrations for columns added after initial release."""
-    from sqlalchemy import inspect, text
-    inspector = inspect(eng)
-    # Add server_name to cleanup_logs if missing
-    if "cleanup_logs" in inspector.get_table_names():
-        columns = [c["name"] for c in inspector.get_columns("cleanup_logs")]
-        if "server_name" not in columns:
-            with eng.begin() as conn:
-                conn.execute(text(
-                    "ALTER TABLE cleanup_logs ADD COLUMN server_name VARCHAR(100) NOT NULL DEFAULT '' AFTER deleted_at"
-                ))
+    from sqlalchemy import text
+    with eng.begin() as conn:
+        try:
+            conn.execute(text(
+                "ALTER TABLE cleanup_logs ADD COLUMN server_name VARCHAR(100) NOT NULL DEFAULT '' AFTER deleted_at"
+            ))
+        except Exception:
+            pass  # column already exists
 
 
 def get_db():

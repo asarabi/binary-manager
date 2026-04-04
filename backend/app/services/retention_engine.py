@@ -212,8 +212,8 @@ def run_cleanup(db: Session, trigger: str = "manual", dry_run: bool = False) -> 
             run.disk_usage_after = disk_info["usage_percent"]
 
         db.commit()
-        # Purge old logs
-        _purge_old_logs(db, config.retention.log_retention_days)
+        if not dry_run:
+            _purge_old_logs(db, config.retention.log_retention_days)
 
         _progress = f"Completed: {total_deleted} builds deleted, {total_freed} bytes freed"
         logger.info(_progress)
@@ -234,11 +234,9 @@ def run_cleanup(db: Session, trigger: str = "manual", dry_run: bool = False) -> 
 def _purge_old_logs(db: Session, retention_days: int) -> None:
     """Delete cleanup runs and logs older than retention_days."""
     cutoff = datetime.utcnow() - timedelta(days=retention_days)
-    old_runs = db.query(CleanupRun).filter(CleanupRun.started_at < cutoff).all()
-    if not old_runs:
-        return
-    old_run_ids = [r.id for r in old_runs]
+    old_run_ids = db.query(CleanupRun.id).filter(CleanupRun.started_at < cutoff).scalar_subquery()
     deleted_logs = db.query(CleanupLog).filter(CleanupLog.run_id.in_(old_run_ids)).delete(synchronize_session=False)
-    deleted_runs = db.query(CleanupRun).filter(CleanupRun.id.in_(old_run_ids)).delete(synchronize_session=False)
+    deleted_runs = db.query(CleanupRun).filter(CleanupRun.started_at < cutoff).delete(synchronize_session=False)
     db.commit()
-    logger.info("Purged %d old runs and %d logs (older than %d days)", deleted_runs, deleted_logs, retention_days)
+    if deleted_runs:
+        logger.info("Purged %d old runs and %d logs (older than %d days)", deleted_runs, deleted_logs, retention_days)

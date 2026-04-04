@@ -28,34 +28,27 @@ def verify_user(username: str, password: str) -> str | None:
     return None
 
 
-def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> str:
+def _decode_token(credentials: HTTPAuthorizationCredentials) -> dict:
     config = get_config()
     try:
         payload = jwt.decode(credentials.credentials, config.auth.jwt_secret, algorithms=[ALGORITHM])
-        sub: str | None = payload.get("sub")
-        if sub is None:
+        if payload.get("sub") is None:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
-        return sub
+        return payload
     except JWTError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+
+
+def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> str:
+    return _decode_token(credentials)["sub"]
 
 
 def get_current_role(credentials: HTTPAuthorizationCredentials = Depends(security)) -> str:
-    config = get_config()
-    try:
-        payload = jwt.decode(credentials.credentials, config.auth.jwt_secret, algorithms=[ALGORITHM])
-        return payload.get("role", "user")
-    except JWTError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+    return _decode_token(credentials).get("role", "user")
 
 
 def require_admin(credentials: HTTPAuthorizationCredentials = Depends(security)) -> str:
-    config = get_config()
-    try:
-        payload = jwt.decode(credentials.credentials, config.auth.jwt_secret, algorithms=[ALGORITHM])
-        role = payload.get("role", "user")
-        if role != "admin":
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
-        return payload.get("sub", "")
-    except JWTError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+    payload = _decode_token(credentials)
+    if payload.get("role") != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    return payload["sub"]

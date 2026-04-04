@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { getCleanupRuns, getLogs } from "../api/client";
 import RetentionBadge from "../components/RetentionBadge";
 import { Loader2, ChevronDown, ChevronRight, Trash2, Eye } from "lucide-react";
+import { formatBytes } from "../utils/format";
 
 interface CleanupRun {
   id: number;
@@ -29,14 +30,6 @@ interface LogEntry {
   size_bytes: number;
   score: number;
   dry_run: boolean;
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return "-";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB", "TB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
 }
 
 function formatKST(dateStr: string): string {
@@ -167,7 +160,7 @@ export default function LogsPage() {
                         Freed
                       </div>
                       <div className="font-semibold text-gray-900">
-                        {formatBytes(run.bytes_freed)}
+                        {formatBytes(run.bytes_freed, "-")}
                       </div>
                     </div>
                   )}
@@ -268,7 +261,7 @@ export default function LogsPage() {
                                       </td>
                                       {!run.dry_run && (
                                         <td className="py-1.5 pr-4 text-gray-500">
-                                          {formatBytes(log.size_bytes)}
+                                          {formatBytes(log.size_bytes, "-")}
                                         </td>
                                       )}
                                       <td className="py-1.5 font-mono text-gray-400 tabular-nums">

@@ -9,7 +9,8 @@ import { login as apiLogin } from "../api/client";
 
 interface AuthContextType {
   isAuthenticated: boolean;
-  login: (password: string) => Promise<void>;
+  role: string;
+  login: (username: string, password: string) => Promise<void>;
   logout: () => void;
 }
 
@@ -17,25 +18,34 @@ const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [role, setRole] = useState("");
 
   useEffect(() => {
     const token = localStorage.getItem("token");
-    setIsAuthenticated(!!token);
+    const savedRole = localStorage.getItem("role") || "user";
+    if (token) {
+      setIsAuthenticated(true);
+      setRole(savedRole);
+    }
   }, []);
 
-  const login = async (password: string) => {
-    const res = await apiLogin(password);
+  const login = async (username: string, password: string) => {
+    const res = await apiLogin(username, password);
     localStorage.setItem("token", res.data.access_token);
+    localStorage.setItem("role", res.data.role);
     setIsAuthenticated(true);
+    setRole(res.data.role);
   };
 
   const logout = () => {
     localStorage.removeItem("token");
+    localStorage.removeItem("role");
     setIsAuthenticated(false);
+    setRole("");
   };
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, login, logout }}>
+    <AuthContext.Provider value={{ isAuthenticated, role, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

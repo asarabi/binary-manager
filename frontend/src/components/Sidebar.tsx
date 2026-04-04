@@ -9,14 +9,18 @@ import {
 import { useAuth } from "../context/AuthContext";
 
 const links = [
-  { to: "/", icon: LayoutDashboard, label: "Dashboard" },
-  { to: "/binaries", icon: HardDrive, label: "Binaries" },
-  { to: "/settings", icon: Settings, label: "Settings" },
-  { to: "/logs", icon: ScrollText, label: "Logs" },
+  { to: "/", icon: LayoutDashboard, label: "Dashboard", adminOnly: false },
+  { to: "/binaries", icon: HardDrive, label: "Binaries", adminOnly: false },
+  { to: "/settings", icon: Settings, label: "Settings", adminOnly: true },
+  { to: "/logs", icon: ScrollText, label: "Logs", adminOnly: false },
 ];
 
 export default function Sidebar() {
-  const { logout } = useAuth();
+  const { logout, role } = useAuth();
+
+  const visibleLinks = links.filter(
+    (link) => !link.adminOnly || role === "admin"
+  );
 
   return (
     <aside className="w-56 bg-white border-r border-gray-200 flex flex-col min-h-screen">
@@ -27,7 +31,7 @@ export default function Sidebar() {
         <p className="text-[11px] text-gray-400 mt-0.5">Retention Manager</p>
       </div>
       <nav className="flex-1 px-3 py-3 space-y-0.5">
-        {links.map((link) => (
+        {visibleLinks.map((link) => (
           <NavLink
             key={link.to}
             to={link.to}

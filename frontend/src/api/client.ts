@@ -26,8 +26,8 @@ api.interceptors.response.use(
 export default api;
 
 // Auth
-export const login = (password: string) =>
-  api.post("/auth/login", { password });
+export const login = (username: string, password: string) =>
+  api.post("/auth/login", { username, password });
 
 // Dashboard
 export const getDashboardStats = () => api.get("/dashboard/stats");

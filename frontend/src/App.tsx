@@ -14,6 +14,12 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function AdminRoute({ children }: { children: React.ReactNode }) {
+  const { role } = useAuth();
+  if (role !== "admin") return <Navigate to="/" replace />;
+  return <>{children}</>;
+}
+
 export default function App() {
   return (
     <Routes>
@@ -29,7 +35,7 @@ export default function App() {
         <Route index element={<DashboardPage />} />
         <Route path="binaries" element={<BinaryListPage />} />
         <Route path="binaries/detail/*" element={<ProjectDetailPage />} />
-        <Route path="settings" element={<SettingsPage />} />
+        <Route path="settings" element={<AdminRoute><SettingsPage /></AdminRoute>} />
         <Route path="logs" element={<LogsPage />} />
       </Route>
     </Routes>

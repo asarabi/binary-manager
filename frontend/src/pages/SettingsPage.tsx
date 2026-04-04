@@ -22,6 +22,7 @@ interface BinaryServer {
 interface RetentionConfig {
   default_days: number;
   custom_default_days: number;
+  log_retention_days: number;
 }
 
 interface ServerTestResult {
@@ -38,6 +39,7 @@ export default function SettingsPage() {
   const [retention, setRetention] = useState<RetentionConfig>({
     default_days: 7,
     custom_default_days: 30,
+    log_retention_days: 30,
   });
   const [testing, setTesting] = useState(false);
   const [testResults, setTestResults] = useState<ServerTestResult[]>([]);
@@ -183,11 +185,11 @@ export default function SettingsPage() {
               Retention Defaults
             </h3>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-3 gap-4">
             <div>
               <label className={labelCls}>Default Retention (days)</label>
               <p className="text-[11px] text-gray-400 mb-1.5">
-                Custom project로 등록하지 않은 프로젝트에 적용
+                Custom 미등록 프로젝트에 적용
               </p>
               <input
                 type="number"
@@ -210,6 +212,21 @@ export default function SettingsPage() {
                 value={retention.custom_default_days}
                 onChange={(e) =>
                   setRetention({ ...retention, custom_default_days: Number(e.target.value) })
+                }
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>Log Retention (days)</label>
+              <p className="text-[11px] text-gray-400 mb-1.5">
+                Cleanup 로그 보관 기간
+              </p>
+              <input
+                type="number"
+                min={1}
+                value={retention.log_retention_days}
+                onChange={(e) =>
+                  setRetention({ ...retention, log_retention_days: Number(e.target.value) })
                 }
                 className={inputCls}
               />

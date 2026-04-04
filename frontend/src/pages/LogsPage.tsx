@@ -21,6 +21,7 @@ interface LogEntry {
   id: number;
   run_id: number;
   deleted_at: string;
+  server_name: string;
   project_name: string;
   build_number: string;
   retention_type: string;
@@ -42,6 +43,16 @@ function formatKST(dateStr: string): string {
   return new Date(dateStr + "Z").toLocaleString("ko-KR", {
     timeZone: "Asia/Seoul",
   });
+}
+
+function groupByServer(logs: LogEntry[]): Record<string, LogEntry[]> {
+  const groups: Record<string, LogEntry[]> = {};
+  for (const log of logs) {
+    const key = log.server_name || "unknown";
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(log);
+  }
+  return groups;
 }
 
 export default function LogsPage() {
@@ -197,58 +208,80 @@ export default function LogsPage() {
                   )}
                   {runLogs[run.id] ? (
                     runLogs[run.id].length > 0 ? (
-                      <table className="min-w-full text-[12px]">
-                        <thead>
-                          <tr className="text-left text-[10px] text-gray-400 uppercase tracking-wider">
-                            <th className="pb-2 pr-4">#</th>
-                            <th className="pb-2 pr-4">Project</th>
-                            <th className="pb-2 pr-4">Build</th>
-                            <th className="pb-2 pr-4">Type</th>
-                            <th className="pb-2 pr-4">Age</th>
-                            {!run.dry_run && <th className="pb-2 pr-4">Size</th>}
-                            <th className="pb-2">Remaining</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {runLogs[run.id].map((log, i) => (
-                            <tr
-                              key={log.id}
-                              className="border-t border-gray-50"
-                            >
-                              <td className="py-1.5 pr-4 text-gray-300 tabular-nums">
-                                {i + 1}
-                              </td>
-                              <td className="py-1.5 pr-4 font-medium text-gray-900">
-                                {log.project_name}
-                              </td>
-                              <td className="py-1.5 pr-4 font-mono text-gray-700">
-                                {log.build_number}
-                              </td>
-                              <td className="py-1.5 pr-4">
-                                <RetentionBadge
-                                  isCustom={log.retention_type === "custom"}
-                                  retentionDays={
-                                    log.score > 0
-                                      ? Math.round(log.age_days + log.score)
-                                      : 7
-                                  }
-                                />
-                              </td>
-                              <td className="py-1.5 pr-4 text-gray-500 tabular-nums">
-                                {log.age_days.toFixed(1)}d
-                              </td>
-                              {!run.dry_run && (
-                                <td className="py-1.5 pr-4 text-gray-500">
-                                  {formatBytes(log.size_bytes)}
-                                </td>
-                              )}
-                              <td className="py-1.5 font-mono text-gray-400 tabular-nums">
-                                {log.score.toFixed(1)}d
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                      <div className="space-y-4">
+                        {Object.entries(groupByServer(runLogs[run.id])).map(
+                          ([serverName, logs]) => (
+                            <div key={serverName}>
+                              <div className="flex items-center gap-2 mb-2">
+                                <span className="text-[11px] font-medium text-gray-500 bg-gray-50 px-2 py-0.5 rounded">
+                                  {serverName}
+                                </span>
+                                <span className="text-[11px] text-gray-400">
+                                  {logs.length} builds
+                                </span>
+                              </div>
+                              <table className="min-w-full text-[12px]">
+                                <thead>
+                                  <tr className="text-left text-[10px] text-gray-400 uppercase tracking-wider">
+                                    <th className="pb-2 pr-4">#</th>
+                                    <th className="pb-2 pr-4">Project</th>
+                                    <th className="pb-2 pr-4">Build</th>
+                                    <th className="pb-2 pr-4">Type</th>
+                                    <th className="pb-2 pr-4">Age</th>
+                                    {!run.dry_run && (
+                                      <th className="pb-2 pr-4">Size</th>
+                                    )}
+                                    <th className="pb-2">Remaining</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {logs.map((log, i) => (
+                                    <tr
+                                      key={log.id}
+                                      className="border-t border-gray-50"
+                                    >
+                                      <td className="py-1.5 pr-4 text-gray-300 tabular-nums">
+                                        {i + 1}
+                                      </td>
+                                      <td className="py-1.5 pr-4 font-medium text-gray-900">
+                                        {log.project_name}
+                                      </td>
+                                      <td className="py-1.5 pr-4 font-mono text-gray-700">
+                                        {log.build_number}
+                                      </td>
+                                      <td className="py-1.5 pr-4">
+                                        <RetentionBadge
+                                          isCustom={
+                                            log.retention_type === "custom"
+                                          }
+                                          retentionDays={
+                                            log.score > 0
+                                              ? Math.round(
+                                                  log.age_days + log.score
+                                                )
+                                              : 7
+                                          }
+                                        />
+                                      </td>
+                                      <td className="py-1.5 pr-4 text-gray-500 tabular-nums">
+                                        {log.age_days.toFixed(1)}d
+                                      </td>
+                                      {!run.dry_run && (
+                                        <td className="py-1.5 pr-4 text-gray-500">
+                                          {formatBytes(log.size_bytes)}
+                                        </td>
+                                      )}
+                                      <td className="py-1.5 font-mono text-gray-400 tabular-nums">
+                                        {log.score.toFixed(1)}d
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )
+                        )}
+                      </div>
                     ) : (
                       <p className="text-[13px] text-gray-400">
                         No builds deleted

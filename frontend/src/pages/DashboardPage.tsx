@@ -3,17 +3,22 @@ import { useNavigate } from "react-router-dom";
 import { getDashboardStats, triggerCleanup, getCleanupStatus } from "../api/client";
 import DiskUsageGauge from "../components/DiskUsageGauge";
 import RetentionBadge from "../components/RetentionBadge";
-import { FolderOpen, Package, Clock, Play, Loader2, X, AlertTriangle } from "lucide-react";
+import { FolderOpen, Package, Clock, Play, Loader2, X } from "lucide-react";
 
-interface Stats {
+interface ServerStat {
+  name: string;
   disk: {
     total_bytes: number;
     used_bytes: number;
     free_bytes: number;
     usage_percent: number;
   };
-  total_projects: number;
-  total_builds: number;
+  project_count: number;
+  build_count: number;
+}
+
+interface Stats {
+  servers: ServerStat[];
   cleanup_running: boolean;
   last_cleanup_at: string | null;
 }
@@ -105,6 +110,9 @@ export default function DashboardPage() {
 
   if (!stats) return null;
 
+  const totalProjects = stats.servers.reduce((s, sv) => s + sv.project_count, 0);
+  const totalBuilds = stats.servers.reduce((s, sv) => s + sv.build_count, 0);
+
   return (
     <div>
       <div className="flex items-center justify-between mb-8">
@@ -137,44 +145,75 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <DiskUsageGauge
-          usagePercent={stats.disk.usage_percent}
-          totalBytes={stats.disk.total_bytes}
-          usedBytes={stats.disk.used_bytes}
-          freeBytes={stats.disk.free_bytes}
-        />
+      {/* Per-server stats */}
+      <div className="space-y-4 mb-6">
+        {stats.servers.map((srv) => (
+          <div key={srv.name} className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <DiskUsageGauge
+              serverName={srv.name}
+              usagePercent={srv.disk.usage_percent}
+              totalBytes={srv.disk.total_bytes}
+              usedBytes={srv.disk.used_bytes}
+              freeBytes={srv.disk.free_bytes}
+            />
+            <div
+              onClick={() => navigate("/binaries")}
+              className="bg-white border border-gray-200 rounded-xl p-5 cursor-pointer hover:border-gray-300 transition-colors"
+            >
+              <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wider mb-3">
+                Projects
+              </p>
+              <div className="flex items-center gap-3">
+                <FolderOpen className="text-blue-500" size={22} strokeWidth={1.8} />
+                <span className="text-3xl font-semibold text-gray-900 tabular-nums">
+                  {srv.project_count}
+                </span>
+              </div>
+            </div>
+            <div
+              onClick={() => navigate("/binaries")}
+              className="bg-white border border-gray-200 rounded-xl p-5 cursor-pointer hover:border-gray-300 transition-colors"
+            >
+              <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wider mb-3">
+                Builds
+              </p>
+              <div className="flex items-center gap-3">
+                <Package className="text-emerald-500" size={22} strokeWidth={1.8} />
+                <span className="text-3xl font-semibold text-gray-900 tabular-nums">
+                  {srv.build_count}
+                </span>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
 
+      {/* Summary row */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
         <div
           onClick={() => navigate("/binaries")}
           className="bg-white border border-gray-200 rounded-xl p-5 cursor-pointer hover:border-gray-300 transition-colors"
         >
           <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wider mb-3">
-            Projects
+            Total
           </p>
-          <div className="flex items-center gap-3">
-            <FolderOpen className="text-blue-500" size={22} strokeWidth={1.8} />
-            <span className="text-3xl font-semibold text-gray-900 tabular-nums">
-              {stats.total_projects}
-            </span>
+          <div className="flex items-center gap-6">
+            <div className="flex items-center gap-2">
+              <FolderOpen className="text-blue-500" size={18} strokeWidth={1.8} />
+              <span className="text-2xl font-semibold text-gray-900 tabular-nums">
+                {totalProjects}
+              </span>
+              <span className="text-[12px] text-gray-400">projects</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Package className="text-emerald-500" size={18} strokeWidth={1.8} />
+              <span className="text-2xl font-semibold text-gray-900 tabular-nums">
+                {totalBuilds}
+              </span>
+              <span className="text-[12px] text-gray-400">builds</span>
+            </div>
           </div>
         </div>
-
-        <div
-          onClick={() => navigate("/binaries")}
-          className="bg-white border border-gray-200 rounded-xl p-5 cursor-pointer hover:border-gray-300 transition-colors"
-        >
-          <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wider mb-3">
-            Total Builds
-          </p>
-          <div className="flex items-center gap-3">
-            <Package className="text-emerald-500" size={22} strokeWidth={1.8} />
-            <span className="text-3xl font-semibold text-gray-900 tabular-nums">
-              {stats.total_builds}
-            </span>
-          </div>
-        </div>
-
         <div className="bg-white border border-gray-200 rounded-xl p-5">
           <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wider mb-3">
             Last Cleanup

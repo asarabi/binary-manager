@@ -1,4 +1,5 @@
 interface Props {
+  serverName: string;
   usagePercent: number;
   totalBytes: number;
   usedBytes: number;
@@ -14,6 +15,7 @@ function formatBytes(bytes: number): string {
 }
 
 export default function DiskUsageGauge({
+  serverName,
   usagePercent,
   totalBytes,
   usedBytes,
@@ -35,9 +37,14 @@ export default function DiskUsageGauge({
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-5">
-      <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wider mb-3">
-        Disk Usage
-      </p>
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wider">
+          Disk Usage
+        </p>
+        <span className="text-[11px] font-medium text-gray-500 bg-gray-50 px-2 py-0.5 rounded">
+          {serverName}
+        </span>
+      </div>
       <div className="flex items-baseline gap-1 mb-3">
         <span className={`text-3xl font-semibold tabular-nums ${textColor}`}>
           {usagePercent.toFixed(1)}

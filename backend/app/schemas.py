@@ -22,10 +22,15 @@ class DiskUsage(BaseModel):
     usage_percent: float
 
 
-class DashboardStats(BaseModel):
+class ServerStats(BaseModel):
+    name: str
     disk: DiskUsage
-    total_projects: int
-    total_builds: int
+    project_count: int
+    build_count: int
+
+
+class DashboardStats(BaseModel):
+    servers: list[ServerStats]
     cleanup_running: bool
     last_cleanup_at: Optional[datetime] = None
 

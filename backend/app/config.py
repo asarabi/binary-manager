@@ -6,25 +6,26 @@ import yaml
 from pydantic import BaseModel
 
 
+class CustomProject(BaseModel):
+    path: str
+    retention_days: int
+
+
 class BinaryServerConfig(BaseModel):
     name: str = "default"
     webdav_url: str = "http://binary-server:8080"
     disk_agent_url: str = "http://binary-server:9090"
     binary_root_path: str = "/data/binaries"
+    project_depth: int = 1
     trigger_threshold_percent: int = 90
     target_threshold_percent: int = 80
     check_interval_minutes: int = 5
+    custom_projects: list[CustomProject] = []
 
 
-class RetentionType(BaseModel):
-    name: str
-    retention_days: int
-    priority: int
-
-
-class ProjectMapping(BaseModel):
-    pattern: str
-    type: str
+class RetentionConfig(BaseModel):
+    default_days: int = 7
+    custom_default_days: int = 30
 
 
 class AuthConfig(BaseModel):
@@ -35,8 +36,7 @@ class AuthConfig(BaseModel):
 class AppConfig(BaseModel):
     demo_mode: bool = False
     binary_servers: list[BinaryServerConfig] = [BinaryServerConfig()]
-    retention_types: list[RetentionType] = []
-    project_mappings: list[ProjectMapping] = []
+    retention: RetentionConfig = RetentionConfig()
     auth: AuthConfig = AuthConfig()
 
 

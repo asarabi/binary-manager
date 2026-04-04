@@ -35,16 +35,16 @@ class BuildInfo(BaseModel):
     build_number: str
     modified_at: datetime
     age_days: float
-    retention_type: str
     retention_days: int
+    remaining_days: float
     expired: bool
-    score: float
     size_bytes: int = 0
 
 
 class ProjectInfo(BaseModel):
     name: str
-    retention_type: str
+    retention_days: int
+    is_custom: bool
     build_count: int
     oldest_build: Optional[str] = None
     newest_build: Optional[str] = None
@@ -53,20 +53,15 @@ class ProjectInfo(BaseModel):
 
 class ProjectDetail(BaseModel):
     name: str
-    retention_type: str
+    retention_days: int
+    is_custom: bool
     builds: list[BuildInfo]
 
 
 # Config
-class RetentionTypeSchema(BaseModel):
-    name: str
+class CustomProjectSchema(BaseModel):
+    path: str
     retention_days: int
-    priority: int
-
-
-class ProjectMappingSchema(BaseModel):
-    pattern: str
-    type: str
 
 
 class BinaryServerSchema(BaseModel):
@@ -74,21 +69,26 @@ class BinaryServerSchema(BaseModel):
     webdav_url: str = ""
     disk_agent_url: str = ""
     binary_root_path: str = "/data/binaries"
+    project_depth: int = 1
     trigger_threshold_percent: int = 90
     target_threshold_percent: int = 80
     check_interval_minutes: int = 5
+    custom_projects: list[CustomProjectSchema] = []
+
+
+class RetentionConfigSchema(BaseModel):
+    default_days: int = 7
+    custom_default_days: int = 30
 
 
 class ConfigUpdate(BaseModel):
     binary_servers: Optional[list[BinaryServerSchema]] = None
-    retention_types: Optional[list[RetentionTypeSchema]] = None
-    project_mappings: Optional[list[ProjectMappingSchema]] = None
+    retention: Optional[RetentionConfigSchema] = None
 
 
 class ConfigResponse(BaseModel):
     binary_servers: list[dict]
-    retention_types: list[RetentionTypeSchema]
-    project_mappings: list[ProjectMappingSchema]
+    retention: RetentionConfigSchema
 
 
 # Cleanup

@@ -6,12 +6,14 @@ from pydantic import BaseModel
 
 # Auth
 class LoginRequest(BaseModel):
+    username: str
     password: str
 
 
 class LoginResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
+    role: str = "user"
 
 
 # Dashboard
@@ -84,6 +86,7 @@ class BinaryServerSchema(BaseModel):
 class RetentionConfigSchema(BaseModel):
     default_days: int = 7
     custom_default_days: int = 30
+    log_retention_days: int = 30
 
 
 class ConfigUpdate(BaseModel):
@@ -126,6 +129,7 @@ class CleanupLogResponse(BaseModel):
     id: int
     run_id: int
     deleted_at: datetime
+    server_name: str = ""
     project_name: str
     build_number: str
     retention_type: str

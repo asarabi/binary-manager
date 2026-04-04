@@ -4,7 +4,7 @@ import httpx
 from fastapi import APIRouter, Depends
 from webdav3.client import Client as WebDAVClient
 
-from ..auth import get_current_user
+from ..auth import get_current_user, require_admin
 from ..config import (
     BinaryServerConfig,
     CustomProject,
@@ -28,12 +28,13 @@ def get_current_config(user: str = Depends(get_current_user)):
         retention=RetentionConfigSchema(
             default_days=config.retention.default_days,
             custom_default_days=config.retention.custom_default_days,
+            log_retention_days=config.retention.log_retention_days,
         ),
     )
 
 
 @router.put("")
-def update_config(update: ConfigUpdate, user: str = Depends(get_current_user)):
+def update_config(update: ConfigUpdate, user: str = Depends(require_admin)):
     config = get_config()
 
     if update.binary_servers is not None:
@@ -62,6 +63,7 @@ def update_config(update: ConfigUpdate, user: str = Depends(get_current_user)):
         config.retention = RetentionConfig(
             default_days=update.retention.default_days,
             custom_default_days=update.retention.custom_default_days,
+            log_retention_days=update.retention.log_retention_days,
         )
 
     save_config(config)
@@ -69,7 +71,7 @@ def update_config(update: ConfigUpdate, user: str = Depends(get_current_user)):
 
 
 @router.post("/test-connection")
-def test_connection(user: str = Depends(get_current_user)):
+def test_connection(user: str = Depends(require_admin)):
     """Test WebDAV and Disk Agent connectivity for all servers."""
     config = get_config()
     results = []

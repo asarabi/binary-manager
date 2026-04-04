@@ -26,10 +26,20 @@ class BinaryServerConfig(BaseModel):
 class RetentionConfig(BaseModel):
     default_days: int = 7
     custom_default_days: int = 30
+    log_retention_days: int = 30
+
+
+class UserAccount(BaseModel):
+    username: str
+    password: str
+    role: str = "user"  # "admin" or "user"
 
 
 class AuthConfig(BaseModel):
-    shared_password: str = "changeme"
+    users: list[UserAccount] = [
+        UserAccount(username="cicd", password="tmxkqjrtm1@", role="admin"),
+        UserAccount(username="share", password="share", role="user"),
+    ]
     jwt_secret: str = "change-this-to-a-random-secret-in-production"
 
 

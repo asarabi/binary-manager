@@ -6,99 +6,29 @@ Android 빌드 바이너리 보관 관리 도구. 원격 바이너리 서버의 
 
 ### Deployment View
 
-```mermaid
-graph TB
-    subgraph Client
-        Browser["Browser"]
-    end
-
-    subgraph DockerHost["Docker Host"]
-        subgraph AppContainer["app · python:3.12-slim + nginx · :8080"]
-            SPA["React SPA<br/>Static Files"]
-            Proxy["nginx Reverse Proxy<br/>/api/* → localhost:8000"]
-            FastAPI["FastAPI · uvicorn"]
-            Routers["Routers<br/>auth | dashboard | binaries<br/>config | cleanup | logs"]
-            Scheduler["APScheduler<br/>주기적 디스크 체크"]
-            Engine["Retention Engine<br/>score 계산 · cleanup 실행"]
-            Proxy -->|"proxy_pass :8000"| FastAPI
-            FastAPI --> Routers
-            Scheduler -->|"interval trigger"| Engine
-        end
-
-        subgraph DBContainer["db · mysql:8.0 · :3306"]
-            MySQL[("MySQL<br/>binary_manager<br/>cleanup_runs · cleanup_logs")]
-        end
-
-        Browser -->|"HTTP :8080"| SPA
-        Browser -->|"HTTP :8080 /api/*"| Proxy
-        Routers -->|"SQLAlchemy pymysql"| MySQL
-        Engine -->|"SQLAlchemy pymysql"| MySQL
-    end
-
-    subgraph Volumes["Host Volumes"]
-        ConfigYaml["~/binary-manager-backup/config.yaml"]
-        MySQLData["~/binary-manager-backup/mysql/"]
-    end
-
-    subgraph Remote["Binary Servers · Remote"]
-        subgraph Server1["custom-server"]
-            WebDAV1["WebDAV :8080"]
-            Agent1["Disk Agent :9090"]
-            Store1["/data/binaries/"]
-        end
-        subgraph Server2["mobile-server"]
-            WebDAV2["WebDAV :8080"]
-            Agent2["Disk Agent :9090"]
-            Store2["/data/binaries/"]
-        end
-    end
-
-    ConfigYaml -.->|"bind mount"| AppContainer
-    MySQLData -.->|"bind mount"| DBContainer
-
-    Engine -->|"HTTP · 디스크 사용량"| Agent1
-    Engine -->|"WebDAV · 목록 조회 · 빌드 삭제"| WebDAV1
-    Engine -->|"HTTP · 디스크 사용량"| Agent2
-    Engine -->|"WebDAV · 목록 조회 · 빌드 삭제"| WebDAV2
+```
+Browser ──:8080──▶ nginx ──/api/*──▶ FastAPI ──▶ MySQL
+                     │                  │
+                     │              Retention Engine ◀── APScheduler (주기적)
+                     │                  │
+                     │                  ├──WebDAV────▶ 바이너리 서버 (목록/삭제)
+                     │                  └──HTTP──────▶ Disk Agent   (디스크 사용량)
+                     │
+                     └── React SPA (정적 파일 서빙)
 ```
 
 ### 클린업 흐름
 
-```mermaid
-sequenceDiagram
-    participant B as Browser
-    participant N as Nginx
-    participant F as FastAPI
-    participant DB as MySQL
-    participant S as Binary Server
-
-    rect rgb(40, 40, 60)
-        Note right of B: 사용자 요청
-        B->>N: GET /api/dashboard/stats
-        N->>F: proxy_pass
-        F->>DB: SELECT cleanup stats
-        DB-->>F: results
-        F-->>N: JSON
-        N-->>B: 200 OK
-    end
-
-    rect rgb(60, 40, 40)
-        Note right of F: 자동 클린업 (Scheduler, 서버별)
-        F->>S: HTTP: Disk Agent /disk-usage
-        S-->>F: 92% used
-        Note over F: 90% 초과 → 클린업 시작
-        F->>S: WebDAV: PROPFIND (빌드 목록)
-        S-->>F: build list + mtime
-        Note over F: score = priority×1000 + remaining_days×10
-        loop score 낮은 순서대로 삭제
-            F->>S: WebDAV: DELETE build
-            S-->>F: 200 OK
-            F->>S: HTTP: Disk Agent /disk-usage (재확인)
-            S-->>F: 83% used
-        end
-        Note over F: 80% 이하 → 클린업 종료
-        F->>DB: INSERT cleanup_runs, cleanup_logs
-    end
+```
+1. Disk Agent에 디스크 사용량 조회 ─────────────▶ 92% 응답
+2. 90% 초과 → 클린업 시작
+3. WebDAV로 빌드 목록 조회 (mtime 포함)
+4. score = priority × 1000 + remaining_days × 10 계산
+5. score 낮은 순서대로 반복:
+   ├── WebDAV DELETE (빌드 삭제)
+   ├── Disk Agent로 디스크 재확인 ──────────────▶ 83% 응답
+   └── 80% 이하면 중단
+6. 결과를 MySQL에 저장 (cleanup_runs, cleanup_logs)
 ```
 
 ### 컴포넌트 역할
@@ -175,54 +105,113 @@ frontend/
       LogsPage.tsx           # 정리 이력 뷰어
 ```
 
-## 빠른 시작
+## 설치 가이드
 
-### 초기 설정
+이 시스템은 **관리 서버** 1대와 **바이너리 서버** N대로 구성됩니다.
 
-최초 실행 전 설정 파일과 DB를 초기화합니다:
-
-```bash
-./setup.sh
+```
+┌─────────────────┐         ┌─────────────────────┐
+│   관리 서버       │ ──────▶ │  바이너리 서버 (N대)   │
+│                 │  HTTP   │                     │
+│  Docker 컨테이너  │         │  WebDAV  :8080      │
+│  ├ App  :8080   │         │  Disk Agent :9090   │
+│  └ MySQL :3306  │         │  /data/binaries/    │
+└─────────────────┘         └─────────────────────┘
 ```
 
-이 스크립트는 `~/binary-manager-backup/` 폴더에 다음을 생성합니다:
-- `config.yaml` - 런타임 설정 (소스의 기본 설정 복사)
-- `mysql/` - MySQL 데이터 디렉토리
+### 1단계: 바이너리 서버 설정 (각 서버마다 반복)
 
-MySQL DB는 첫 실행 시 자동으로 초기화되며, 이미 파일이 존재하면 덮어쓰지 않아 기존 데이터가 보존됩니다.
+바이너리 서버에는 **WebDAV**와 **Disk Agent** 두 가지를 설치합니다.
 
-### 데모 모드 (기본값)
+#### WebDAV 설치
 
-데모 모드는 실제 바이너리 서버 없이 UI를 탐색할 수 있도록 가짜 데이터를 생성합니다.
+빌드 파일의 목록 조회와 삭제를 위해 WebDAV를 설치합니다. 아래는 nginx 기반 예시입니다:
 
 ```bash
-docker compose up --build
+# nginx + WebDAV 모듈 설치
+sudo apt install nginx nginx-extras
+
+# nginx 설정 (/etc/nginx/sites-available/webdav)
+server {
+    listen 8080;
+    root /data/binaries;
+
+    location / {
+        dav_methods PUT DELETE MKCOL COPY MOVE;
+        dav_ext_methods PROPFIND OPTIONS;
+        autoindex on;
+    }
+}
+
+sudo ln -s /etc/nginx/sites-available/webdav /etc/nginx/sites-enabled/
+sudo systemctl restart nginx
 ```
 
-http://localhost:8080 접속 후 비밀번호 `changeme`로 로그인합니다.
+#### Disk Agent 설치
 
-### 프로덕션 모드
-
-1. 각 바이너리 서버에 Disk Agent 설치:
+디스크 사용량 조회를 위한 경량 HTTP 에이전트입니다. Python 표준 라이브러리만 사용하므로 별도 패키지 설치가 필요 없습니다.
 
 ```bash
+# disk_agent.py를 바이너리 서버로 복사
+scp disk-agent/disk_agent.py user@binary-server:~/
+
 # 바이너리 서버에서 실행
 python3 disk_agent.py --path /data/binaries --port 9090
 ```
 
-2. `backend/config.yaml` 수정:
+systemd 서비스로 등록하면 서버 재시작 시 자동 실행됩니다. 서비스 파일은 `disk-agent/disk-agent.service`에 포함되어 있습니다:
+
+```bash
+# 파일 복사
+sudo mkdir -p /opt/disk-agent
+sudo cp disk_agent.py /opt/disk-agent/
+sudo cp disk-agent.service /etc/systemd/system/
+
+# 필요 시 ExecStart의 --path, --port 값을 환경에 맞게 수정
+sudo vi /etc/systemd/system/disk-agent.service
+
+# 서비스 등록 및 시작
+sudo systemctl enable --now disk-agent
+```
+
+#### 동작 확인
+
+```bash
+# Disk Agent 확인
+curl http://localhost:9090/health
+curl http://localhost:9090/disk-usage
+
+# WebDAV 확인
+curl -X PROPFIND http://localhost:8080/
+```
+
+### 2단계: 관리 서버 설정
+
+관리 서버에서 Docker Compose로 앱과 DB를 실행합니다.
+
+```bash
+# 소스 클론
+git clone <repo-url> && cd binary-manager
+
+# 초기 설정 (~/binary-manager-backup/ 에 config.yaml과 mysql/ 생성)
+./setup.sh
+```
+
+#### 설정 파일 수정
+
+`~/binary-manager-backup/config.yaml`을 열어 바이너리 서버 정보를 입력합니다:
 
 ```yaml
-demo_mode: false
+demo_mode: false    # 반드시 false로 변경
 
 binary_servers:
   - name: "custom"
-    webdav_url: "http://custom-server:8080"
-    disk_agent_url: "http://custom-server:9090"
-    binary_root_path: "/data/binaries"
-    trigger_threshold_percent: 90
-    target_threshold_percent: 80
-    check_interval_minutes: 5
+    webdav_url: "http://custom-server:8080"       # 바이너리 서버의 WebDAV 주소
+    disk_agent_url: "http://custom-server:9090"   # 바이너리 서버의 Disk Agent 주소
+    binary_root_path: "/data/binaries"            # 바이너리 서버의 빌드 저장 경로
+    trigger_threshold_percent: 90                 # 이 사용률 초과 시 정리 시작
+    target_threshold_percent: 80                  # 이 사용률 이하로 내려가면 정리 중단
+    check_interval_minutes: 5                     # 디스크 점검 주기
   - name: "mobile"
     webdav_url: "http://mobile-server:8080"
     disk_agent_url: "http://mobile-server:9090"
@@ -232,15 +221,33 @@ binary_servers:
     check_interval_minutes: 5
 
 auth:
-  shared_password: "your-secure-password"
-  jwt_secret: "your-random-secret"
+  shared_password: "your-secure-password"   # 웹 UI 로그인 비밀번호
+  jwt_secret: "your-random-secret"          # JWT 서명 키 (랜덤 문자열)
 ```
 
-3. 시작:
+#### 실행
 
 ```bash
 docker compose up --build -d
 ```
+
+http://localhost:8080 접속 → 설정한 비밀번호로 로그인
+
+#### 연결 확인
+
+Settings 페이지에서 **연결 테스트** 버튼을 클릭하여 각 바이너리 서버와의 WebDAV/Disk Agent 연결을 확인합니다.
+
+### 데모 모드 (바이너리 서버 없이 테스트)
+
+바이너리 서버 없이 UI를 먼저 확인하고 싶다면 데모 모드로 실행합니다:
+
+```bash
+./setup.sh
+docker compose up --build
+```
+
+`config.yaml`의 `demo_mode: true` (기본값)로 가짜 데이터가 생성됩니다.
+http://localhost:8080 접속 후 비밀번호 `changeme`로 로그인합니다.
 
 ## 설정
 

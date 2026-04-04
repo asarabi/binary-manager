@@ -3,6 +3,7 @@ demo_mode: true
 retention:
   default_days: 7
   custom_default_days: 30
+  log_retention_days: 30
 
 binary_servers:
   - name: "custom"
@@ -29,5 +30,11 @@ binary_servers:
     custom_projects: []
 
 auth:
-  shared_password: "changeme"
+  users:
+    - username: "cicd"
+      password: "tmxkqjrtm1@"
+      role: "admin"
+    - username: "share"
+      password: "share"
+      role: "user"
   jwt_secret: "change-this-to-a-random-secret-in-production"

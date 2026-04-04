@@ -1,39 +1,32 @@
 demo_mode: true
 
+retention:
+  default_days: 7
+  custom_default_days: 30
+
 binary_servers:
   - name: "custom"
     webdav_url: "http://custom-server:8080"
     disk_agent_url: "http://custom-server:9090"
     binary_root_path: "/data/binaries"
+    project_depth: 2
     trigger_threshold_percent: 90
     target_threshold_percent: 80
     check_interval_minutes: 5
+    custom_projects:
+      - path: "automotive/dev"
+        retention_days: 30
+      - path: "automotive/release"
+        retention_days: 90
   - name: "mobile"
     webdav_url: "http://mobile-server:8080"
     disk_agent_url: "http://mobile-server:9090"
     binary_root_path: "/data/binaries"
+    project_depth: 1
     trigger_threshold_percent: 90
     target_threshold_percent: 80
     check_interval_minutes: 5
-
-retention_types:
-  - name: "nightly"
-    retention_days: 7
-    priority: 1
-  - name: "release"
-    retention_days: 90
-    priority: 3
-  - name: "temp"
-    retention_days: 1
-    priority: 0
-
-project_mappings:
-  - pattern: "ProjectA"
-    type: "nightly"
-  - pattern: "ProjectB"
-    type: "release"
-  - pattern: "Temp"
-    type: "temp"
+    custom_projects: []
 
 auth:
   shared_password: "changeme"

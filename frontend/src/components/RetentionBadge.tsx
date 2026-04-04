@@ -1,17 +1,16 @@
 interface Props {
-  type: string;
+  isCustom: boolean;
+  retentionDays: number;
 }
 
-const colors: Record<string, string> = {
-  nightly: "bg-orange-100 text-orange-700",
-  release: "bg-blue-100 text-blue-700",
-};
-
-export default function RetentionBadge({ type }: Props) {
-  const cls = colors[type] || "bg-gray-100 text-gray-700";
-  return (
-    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${cls}`}>
-      {type}
+export default function RetentionBadge({ isCustom, retentionDays }: Props) {
+  return isCustom ? (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-blue-50 text-blue-600 border border-blue-100">
+      {retentionDays}d custom
+    </span>
+  ) : (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-gray-50 text-gray-500 border border-gray-100">
+      {retentionDays}d default
     </span>
   );
 }

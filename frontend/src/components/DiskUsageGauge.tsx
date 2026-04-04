@@ -23,48 +23,51 @@ export default function DiskUsageGauge({
     usagePercent >= 90
       ? "bg-red-500"
       : usagePercent >= 80
-        ? "bg-yellow-500"
-        : "bg-green-500";
+        ? "bg-amber-500"
+        : "bg-emerald-500";
 
   const textColor =
     usagePercent >= 90
       ? "text-red-600"
       : usagePercent >= 80
-        ? "text-yellow-600"
-        : "text-green-600";
+        ? "text-amber-600"
+        : "text-emerald-600";
 
   return (
-    <div className="bg-white rounded-lg shadow p-6">
-      <h3 className="text-sm font-medium text-gray-500 mb-4">Disk Usage</h3>
-      <div className="flex items-end gap-4 mb-4">
-        <span className={`text-4xl font-bold ${textColor}`}>
-          {usagePercent.toFixed(1)}%
+    <div className="bg-white border border-gray-200 rounded-xl p-5">
+      <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wider mb-3">
+        Disk Usage
+      </p>
+      <div className="flex items-baseline gap-1 mb-3">
+        <span className={`text-3xl font-semibold tabular-nums ${textColor}`}>
+          {usagePercent.toFixed(1)}
         </span>
+        <span className={`text-sm font-medium ${textColor}`}>%</span>
       </div>
-      <div className="w-full bg-gray-200 rounded-full h-3 mb-4">
+      <div className="w-full bg-gray-100 rounded-full h-2 mb-4">
         <div
-          className={`h-3 rounded-full ${color} transition-all duration-500`}
+          className={`h-2 rounded-full ${color} transition-all duration-500`}
           style={{ width: `${Math.min(usagePercent, 100)}%` }}
         />
       </div>
-      <div className="grid grid-cols-3 gap-2 text-sm text-gray-500">
+      <div className="grid grid-cols-3 gap-2 text-[12px]">
         <div>
-          <div className="font-medium text-gray-900">
+          <div className="font-medium text-gray-900 tabular-nums">
             {formatBytes(usedBytes)}
           </div>
-          <div>Used</div>
+          <div className="text-gray-400">Used</div>
         </div>
         <div>
-          <div className="font-medium text-gray-900">
+          <div className="font-medium text-gray-900 tabular-nums">
             {formatBytes(freeBytes)}
           </div>
-          <div>Free</div>
+          <div className="text-gray-400">Free</div>
         </div>
         <div>
-          <div className="font-medium text-gray-900">
+          <div className="font-medium text-gray-900 tabular-nums">
             {formatBytes(totalBytes)}
           </div>
-          <div>Total</div>
+          <div className="text-gray-400">Total</div>
         </div>
       </div>
     </div>

@@ -33,11 +33,14 @@ export const login = (password: string) =>
 export const getDashboardStats = () => api.get("/dashboard/stats");
 
 // Binaries
-export const getProjects = () => api.get("/binaries");
-export const getProjectBuilds = (project: string) =>
-  api.get(`/binaries/${project}`);
-export const deleteBuild = (project: string, build: string) =>
-  api.delete(`/binaries/${project}/${build}`);
+export const getProjects = (server?: string) =>
+  api.get("/binaries", { params: server ? { server } : {} });
+export const getProjectBuilds = (project: string, server?: string) =>
+  api.get(`/binaries/detail/${project}`, { params: server ? { server } : {} });
+export const deleteBuild = (project: string, build: string, server?: string) =>
+  api.delete(`/binaries/detail/${project}/${build}`, {
+    params: server ? { server } : {},
+  });
 
 // Config
 export const getConfig = () => api.get("/config");

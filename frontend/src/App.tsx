@@ -28,7 +28,7 @@ export default function App() {
       >
         <Route index element={<DashboardPage />} />
         <Route path="binaries" element={<BinaryListPage />} />
-        <Route path="binaries/:project" element={<ProjectDetailPage />} />
+        <Route path="binaries/detail/*" element={<ProjectDetailPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="logs" element={<LogsPage />} />
       </Route>

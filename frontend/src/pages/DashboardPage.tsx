@@ -24,6 +24,7 @@ interface DryRunTarget {
   retention_type: string;
   age_days: number;
   score: number;
+  retention_days?: number;
 }
 
 export default function DashboardPage() {
@@ -89,14 +90,14 @@ export default function DashboardPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <Loader2 className="animate-spin text-gray-400" size={32} />
+        <Loader2 className="animate-spin text-gray-300" size={24} />
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
+      <div className="bg-red-50 border border-red-100 rounded-xl p-4 text-[13px] text-red-600">
         {error}
       </div>
     );
@@ -106,13 +107,13 @@ export default function DashboardPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">Dashboard</h2>
+      <div className="flex items-center justify-between mb-8">
+        <h2 className="text-xl font-semibold text-gray-900">Dashboard</h2>
         <div className="flex gap-2">
           <button
             onClick={handleDryRun}
             disabled={cleanupRunning || dryRunLoading}
-            className="flex items-center gap-2 px-4 py-2 text-sm border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50"
+            className="flex items-center gap-1.5 px-3.5 py-2 text-[13px] font-medium border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40 transition-colors"
           >
             {dryRunLoading ? (
               <Loader2 size={14} className="animate-spin" />
@@ -124,7 +125,7 @@ export default function DashboardPage() {
           <button
             onClick={handleCleanup}
             disabled={cleanupRunning}
-            className="flex items-center gap-2 px-4 py-2 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50"
+            className="flex items-center gap-1.5 px-3.5 py-2 text-[13px] font-medium bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:opacity-40 transition-colors"
           >
             {cleanupRunning ? (
               <Loader2 size={14} className="animate-spin" />
@@ -146,12 +147,14 @@ export default function DashboardPage() {
 
         <div
           onClick={() => navigate("/binaries")}
-          className="bg-white rounded-lg shadow p-6 cursor-pointer hover:shadow-md transition-shadow"
+          className="bg-white border border-gray-200 rounded-xl p-5 cursor-pointer hover:border-gray-300 transition-colors"
         >
-          <h3 className="text-sm font-medium text-gray-500 mb-2">Projects</h3>
+          <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wider mb-3">
+            Projects
+          </p>
           <div className="flex items-center gap-3">
-            <FolderOpen className="text-blue-500" size={28} />
-            <span className="text-3xl font-bold text-gray-900">
+            <FolderOpen className="text-blue-500" size={22} strokeWidth={1.8} />
+            <span className="text-3xl font-semibold text-gray-900 tabular-nums">
               {stats.total_projects}
             </span>
           </div>
@@ -159,26 +162,26 @@ export default function DashboardPage() {
 
         <div
           onClick={() => navigate("/binaries")}
-          className="bg-white rounded-lg shadow p-6 cursor-pointer hover:shadow-md transition-shadow"
+          className="bg-white border border-gray-200 rounded-xl p-5 cursor-pointer hover:border-gray-300 transition-colors"
         >
-          <h3 className="text-sm font-medium text-gray-500 mb-2">
+          <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wider mb-3">
             Total Builds
-          </h3>
+          </p>
           <div className="flex items-center gap-3">
-            <Package className="text-green-500" size={28} />
-            <span className="text-3xl font-bold text-gray-900">
+            <Package className="text-emerald-500" size={22} strokeWidth={1.8} />
+            <span className="text-3xl font-semibold text-gray-900 tabular-nums">
               {stats.total_builds}
             </span>
           </div>
         </div>
 
-        <div className="bg-white rounded-lg shadow p-6">
-          <h3 className="text-sm font-medium text-gray-500 mb-2">
+        <div className="bg-white border border-gray-200 rounded-xl p-5">
+          <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wider mb-3">
             Last Cleanup
-          </h3>
+          </p>
           <div className="flex items-center gap-3">
-            <Clock className="text-purple-500" size={28} />
-            <span className="text-sm font-medium text-gray-900">
+            <Clock className="text-violet-500" size={22} strokeWidth={1.8} />
+            <span className="text-[13px] font-medium text-gray-900">
               {stats.last_cleanup_at
                 ? new Date(stats.last_cleanup_at + "Z").toLocaleString("ko-KR", {
                     timeZone: "Asia/Seoul",
@@ -191,73 +194,79 @@ export default function DashboardPage() {
 
       {/* Dry Run Results Modal */}
       {dryRunTargets !== null && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col mx-4">
-            <div className="flex items-center justify-between p-4 border-b">
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white border border-gray-200 rounded-2xl w-full max-w-2xl max-h-[80vh] flex flex-col mx-4">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
               <div>
-                <h3 className="text-lg font-bold text-gray-900">
+                <h3 className="text-base font-semibold text-gray-900">
                   Dry Run Results
                 </h3>
-                <p className="text-sm text-gray-500">
-                  {dryRunTargets.length} builds would be deleted (score order)
+                <p className="text-[12px] text-gray-400 mt-0.5">
+                  {dryRunTargets.length} builds would be deleted
                 </p>
               </div>
               <button
                 onClick={() => setDryRunTargets(null)}
-                className="p-1 hover:bg-gray-100 rounded"
+                className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
               >
-                <X size={20} />
+                <X size={18} />
               </button>
             </div>
             <div className="overflow-auto flex-1">
               {dryRunTargets.length === 0 ? (
-                <div className="p-8 text-center text-gray-500">
+                <div className="p-8 text-center text-[13px] text-gray-400">
                   No builds to delete
                 </div>
               ) : (
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50 sticky top-0">
+                <table className="min-w-full">
+                  <thead className="bg-gray-50/80 sticky top-0">
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      <th className="px-4 py-2.5 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wider">
                         #
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      <th className="px-4 py-2.5 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wider">
                         Project
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      <th className="px-4 py-2.5 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wider">
                         Build
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      <th className="px-4 py-2.5 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wider">
                         Type
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      <th className="px-4 py-2.5 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wider">
                         Age
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                        Score
+                      <th className="px-4 py-2.5 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wider">
+                        Remaining
                       </th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-200">
+                  <tbody>
                     {dryRunTargets.map((t, i) => (
-                      <tr key={`${t.project}-${t.build_number}`} className="hover:bg-gray-50">
-                        <td className="px-4 py-2 text-sm text-gray-400">
+                      <tr
+                        key={`${t.project}-${t.build_number}`}
+                        className="border-b border-gray-50 hover:bg-gray-50/50"
+                      >
+                        <td className="px-4 py-2 text-[12px] text-gray-300 tabular-nums">
                           {i + 1}
                         </td>
-                        <td className="px-4 py-2 text-sm font-medium text-gray-900">
+                        <td className="px-4 py-2 text-[13px] font-medium text-gray-900">
                           {t.project}
                         </td>
-                        <td className="px-4 py-2 text-sm font-mono text-gray-900">
+                        <td className="px-4 py-2 text-[13px] font-mono text-gray-700">
                           {t.build_number}
                         </td>
-                        <td className="px-4 py-2 text-sm">
-                          <RetentionBadge type={t.retention_type} />
+                        <td className="px-4 py-2">
+                          <RetentionBadge
+                            isCustom={t.retention_type === "custom"}
+                            retentionDays={t.retention_days ?? 7}
+                          />
                         </td>
-                        <td className="px-4 py-2 text-sm text-gray-600">
+                        <td className="px-4 py-2 text-[13px] text-gray-500 tabular-nums">
                           {t.age_days}d
                         </td>
-                        <td className="px-4 py-2 text-sm font-mono text-gray-500">
-                          {t.score}
+                        <td className="px-4 py-2 text-[13px] font-mono text-gray-400 tabular-nums">
+                          {t.score.toFixed(1)}d
                         </td>
                       </tr>
                     ))}
@@ -265,10 +274,10 @@ export default function DashboardPage() {
                 </table>
               )}
             </div>
-            <div className="p-4 border-t flex justify-end">
+            <div className="px-5 py-3 border-t border-gray-100 flex justify-end">
               <button
                 onClick={() => setDryRunTargets(null)}
-                className="px-4 py-2 text-sm border border-gray-300 rounded-md hover:bg-gray-50"
+                className="px-4 py-2 text-[13px] font-medium border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
               >
                 Close
               </button>

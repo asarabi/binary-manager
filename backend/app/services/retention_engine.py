@@ -1,4 +1,3 @@
-import fnmatch
 import logging
 from datetime import datetime
 
@@ -28,26 +27,23 @@ def get_status() -> dict:
     }
 
 
-def _get_retention_info(project_name: str) -> tuple[str, int, int]:
-    """Returns (type_name, retention_days, priority) for a project."""
-    config = get_config()
-    matched_type = "nightly"
-    for mapping in config.project_mappings:
-        if fnmatch.fnmatch(project_name, mapping.pattern):
-            matched_type = mapping.type
-            break
-
-    for rt in config.retention_types:
-        if rt.name == matched_type:
-            return rt.name, rt.retention_days, rt.priority
-
-    return matched_type, 3, 1
+def get_retention_days(server: BinaryServerConfig, project_path: str) -> int:
+    """Returns retention_days for a project. Custom override or global default."""
+    for cp in server.custom_projects:
+        if cp.path == project_path:
+            return cp.retention_days
+    return get_config().retention.default_days
 
 
-def compute_score(priority: int, retention_days: int, age_days: float) -> float:
-    """Compute deletion score. Lower score = delete first."""
-    remaining_days = retention_days - age_days
-    return priority * 1000 + remaining_days * 10
+def is_custom_project(server: BinaryServerConfig, project_path: str) -> bool:
+    """Check if a project has a custom retention override."""
+    return any(cp.path == project_path for cp in server.custom_projects)
+
+
+def compute_score(retention_days: int, age_days: float) -> float:
+    """Compute deletion score. Lower score = delete first.
+    Score is simply remaining_days: negative means expired."""
+    return retention_days - age_days
 
 
 def _collect_all_builds(server: BinaryServerConfig) -> list[dict]:
@@ -57,7 +53,7 @@ def _collect_all_builds(server: BinaryServerConfig) -> list[dict]:
     all_builds = []
 
     for project in projects:
-        type_name, retention_days, priority = _get_retention_info(project)
+        retention_days = get_retention_days(server, project)
         builds = webdav_service.list_builds(server, project)
 
         for build in builds:
@@ -71,16 +67,15 @@ def _collect_all_builds(server: BinaryServerConfig) -> list[dict]:
                             project, build["build_number"], int(age_minutes))
                 continue
 
-            score = compute_score(priority, retention_days, age_days)
+            score = compute_score(retention_days, age_days)
             all_builds.append({
                 "server": server.name,
                 "project": project,
                 "build_number": build["build_number"],
                 "modified_at": modified,
                 "age_days": age_days,
-                "retention_type": type_name,
                 "retention_days": retention_days,
-                "priority": priority,
+                "is_custom": is_custom_project(server, project),
                 "score": score,
             })
 
@@ -136,8 +131,9 @@ def _run_cleanup_for_server(
 
         rel_path = f"{build['project']}/{build['build_number']}"
         size = disk_agent_service.get_directory_size(server, rel_path) if not dry_run else 0
+        remaining = build["score"]
 
-        _progress = f"{'[DRY RUN] ' if dry_run else ''}[{server.name}] Deleting {build['project']}/{build['build_number']} (score: {build['score']:.1f}) [{i+1}/{len(all_builds)}]"
+        _progress = f"{'[DRY RUN] ' if dry_run else ''}[{server.name}] Deleting {build['project']}/{build['build_number']} (remaining: {remaining:.1f}d) [{i+1}/{len(all_builds)}]"
         logger.info(_progress)
 
         if not dry_run:
@@ -150,10 +146,10 @@ def _run_cleanup_for_server(
             run_id=run.id,
             project_name=build["project"],
             build_number=build["build_number"],
-            retention_type=build["retention_type"],
+            retention_type="custom" if build["is_custom"] else "default",
             age_days=build["age_days"],
             size_bytes=size,
-            score=build["score"],
+            score=remaining,
             dry_run=dry_run,
         )
         db.add(log)

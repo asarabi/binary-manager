@@ -15,8 +15,11 @@ _cache: dict = {}
 _cache_time: float = 0
 _CACHE_TTL = 60  # seconds
 
-_DEMO_PROJECTS = ["ProjectA", "ProjectB", "Temp"]
-_DEMO_BUILD_COUNTS = {"ProjectA": 10, "ProjectB": 10, "Temp": 10}
+_DEMO_PROJECTS: dict[str, list[str]] = {
+    "custom": ["automotive/dev", "automotive/release", "infotainment/dev"],
+    "mobile": ["android", "ios", "flutter"],
+}
+_DEMO_BUILD_COUNT = 10
 
 
 def _get_client(server: BinaryServerConfig) -> Client:
@@ -28,32 +31,53 @@ def _get_client(server: BinaryServerConfig) -> Client:
 
 
 def _generate_demo_builds(project: str) -> list[dict]:
-    count = _DEMO_BUILD_COUNTS.get(project, 10)
     now = datetime.utcnow()
     return [
-        {"build_number": f"B{i:04d}", "modified_at": now - timedelta(days=i)}
-        for i in range(1, count + 1)
+        {"build_number": str(10000 + i), "modified_at": now - timedelta(days=i)}
+        for i in range(1, _DEMO_BUILD_COUNT + 1)
     ]
 
 
 def list_projects(server: BinaryServerConfig) -> list[str]:
-    """List all project directories under the binary root."""
+    """List project directories under the binary root, scanning to project_depth levels."""
     if get_config().demo_mode:
-        return sorted(_DEMO_PROJECTS)
+        return sorted(_DEMO_PROJECTS.get(server.name, []))
 
     client = _get_client(server)
     root = server.binary_root_path.rstrip("/") + "/"
+    depth = server.project_depth
+
     try:
-        items = client.list(root)
-        projects = [
-            item.strip("/").split("/")[-1]
-            for item in items
-            if item.strip("/") and item.strip("/") != root.strip("/")
-        ]
-        return sorted(projects)
+        return sorted(_list_dirs_at_depth(client, root, depth))
     except Exception as e:
         logger.error("Failed to list projects on %s: %s", server.name, e)
         return []
+
+
+def _list_dirs_at_depth(client: Client, base_path: str, depth: int) -> list[str]:
+    """Recursively list directories at a given depth, returning relative paths."""
+    if depth <= 0:
+        return []
+
+    items = client.list(base_path)
+    dirs = [
+        item.strip("/").split("/")[-1]
+        for item in items
+        if item.strip("/") and item.strip("/") != base_path.strip("/")
+    ]
+
+    if depth == 1:
+        return dirs
+
+    result = []
+    for d in dirs:
+        sub_path = f"{base_path}{d}/"
+        try:
+            sub_dirs = _list_dirs_at_depth(client, sub_path, depth - 1)
+            result.extend(f"{d}/{sd}" for sd in sub_dirs)
+        except Exception as e:
+            logger.warning("Failed to list subdirs of %s: %s", sub_path, e)
+    return result
 
 
 def list_builds(server: BinaryServerConfig, project: str) -> list[dict]:

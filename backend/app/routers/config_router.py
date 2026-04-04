@@ -5,14 +5,14 @@ from fastapi import APIRouter, Depends
 from webdav3.client import Client as WebDAVClient
 
 from ..auth import get_current_user
-from ..config import BinaryServerConfig, get_config, save_config
-from ..schemas import (
-    BinaryServerSchema,
-    ConfigResponse,
-    ConfigUpdate,
-    ProjectMappingSchema,
-    RetentionTypeSchema,
+from ..config import (
+    BinaryServerConfig,
+    CustomProject,
+    RetentionConfig,
+    get_config,
+    save_config,
 )
+from ..schemas import ConfigResponse, ConfigUpdate, RetentionConfigSchema
 from ..services.scheduler_service import reschedule
 
 logger = logging.getLogger(__name__)
@@ -25,14 +25,10 @@ def get_current_config(user: str = Depends(get_current_user)):
     config = get_config()
     return ConfigResponse(
         binary_servers=[s.model_dump() for s in config.binary_servers],
-        retention_types=[
-            RetentionTypeSchema(name=rt.name, retention_days=rt.retention_days, priority=rt.priority)
-            for rt in config.retention_types
-        ],
-        project_mappings=[
-            ProjectMappingSchema(pattern=pm.pattern, type=pm.type)
-            for pm in config.project_mappings
-        ],
+        retention=RetentionConfigSchema(
+            default_days=config.retention.default_days,
+            custom_default_days=config.retention.custom_default_days,
+        ),
     )
 
 
@@ -42,25 +38,31 @@ def update_config(update: ConfigUpdate, user: str = Depends(get_current_user)):
 
     if update.binary_servers is not None:
         config.binary_servers = [
-            BinaryServerConfig(**s.model_dump())
+            BinaryServerConfig(
+                name=s.name,
+                webdav_url=s.webdav_url,
+                disk_agent_url=s.disk_agent_url,
+                binary_root_path=s.binary_root_path,
+                project_depth=s.project_depth,
+                trigger_threshold_percent=s.trigger_threshold_percent,
+                target_threshold_percent=s.target_threshold_percent,
+                check_interval_minutes=s.check_interval_minutes,
+                custom_projects=[
+                    CustomProject(path=cp.path, retention_days=cp.retention_days)
+                    for cp in s.custom_projects
+                ],
+            )
             for s in update.binary_servers
         ]
         # Reschedule with shortest interval
         intervals = [s.check_interval_minutes for s in config.binary_servers] or [5]
         reschedule(min(intervals))
 
-    if update.retention_types is not None:
-        from ..config import RetentionType
-        config.retention_types = [
-            RetentionType(name=rt.name, retention_days=rt.retention_days, priority=rt.priority)
-            for rt in update.retention_types
-        ]
-    if update.project_mappings is not None:
-        from ..config import ProjectMapping
-        config.project_mappings = [
-            ProjectMapping(pattern=pm.pattern, type=pm.type)
-            for pm in update.project_mappings
-        ]
+    if update.retention is not None:
+        config.retention = RetentionConfig(
+            default_days=update.retention.default_days,
+            custom_default_days=update.retention.custom_default_days,
+        )
 
     save_config(config)
     return {"message": "Configuration updated"}

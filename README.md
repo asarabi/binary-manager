@@ -107,31 +107,48 @@ frontend/
 
 ## 설치 가이드
 
-이 시스템은 **관리 서버** 1대와 **바이너리 서버** N대로 구성됩니다.
+### 데모 vs 프로덕션 비교
 
-```
-┌─────────────────┐         ┌─────────────────────┐
-│   관리 서버       │ ──────▶ │  바이너리 서버 (N대)   │
-│                 │  HTTP   │                     │
-│  Docker 컨테이너  │         │  WebDAV  :8080      │
-│  ├ App  :8080   │         │  Disk Agent :9090   │
-│  └ MySQL :3306  │         │  /data/binaries/    │
-└─────────────────┘         └─────────────────────┘
-```
+| | 데모 모드 | 프로덕션 모드 |
+|---|---|---|
+| 용도 | UI 탐색 및 기능 확인 | 실제 바이너리 관리 |
+| 바이너리 서버 | 불필요 | 필요 (N대) |
+| 데이터 | 가짜 데이터 자동 생성 | 실제 서버에서 조회 |
+| 클린업 | 실제 삭제 안 됨 | 실제 빌드 삭제됨 |
+| config.yaml | `demo_mode: true` (기본값) | `demo_mode: false` + 서버 정보 입력 |
+| 설치 절차 | 관리 서버만 설정 | 바이너리 서버 설정 → 관리 서버 설정 |
 
-### 1단계: 바이너리 서버 설정 (각 서버마다 반복)
-
-바이너리 서버에는 **WebDAV**와 **Disk Agent** 두 가지를 설치합니다.
-
-#### WebDAV 설치
-
-빌드 파일의 목록 조회와 삭제를 위해 WebDAV를 설치합니다. 아래는 nginx 기반 예시입니다:
+### 데모 모드 (관리 서버만)
 
 ```bash
-# nginx + WebDAV 모듈 설치
-sudo apt install nginx nginx-extras
+git clone <repo-url> && cd binary-manager
+./setup.sh
+docker compose up --build
+```
 
-# nginx 설정 (/etc/nginx/sites-available/webdav)
+http://localhost:8080 접속 → 비밀번호 `changeme`로 로그인
+
+종료:
+
+```bash
+docker compose down
+```
+
+### 프로덕션 모드
+
+#### 바이너리 서버 (각 서버마다 반복)
+
+각 바이너리 서버에 WebDAV와 Disk Agent를 설치합니다.
+
+**1) WebDAV** — 빌드 목록 조회 및 삭제용
+
+```bash
+sudo apt install nginx nginx-extras
+```
+
+`/etc/nginx/sites-available/webdav` 작성:
+
+```nginx
 server {
     listen 8080;
     root /data/binaries;
@@ -142,112 +159,76 @@ server {
         autoindex on;
     }
 }
+```
 
+```bash
 sudo ln -s /etc/nginx/sites-available/webdav /etc/nginx/sites-enabled/
 sudo systemctl restart nginx
 ```
 
-#### Disk Agent 설치
-
-디스크 사용량 조회를 위한 경량 HTTP 에이전트입니다. Python 표준 라이브러리만 사용하므로 별도 패키지 설치가 필요 없습니다.
+**2) Disk Agent** — 디스크 사용량 조회용 (Python 표준 라이브러리만 사용)
 
 ```bash
-# disk_agent.py를 바이너리 서버로 복사
-scp disk-agent/disk_agent.py user@binary-server:~/
+# 관리 서버에서 바이너리 서버로 파일 복사
+scp disk-agent/disk_agent.py disk-agent/disk-agent.service user@binary-server:~/
 
-# 바이너리 서버에서 실행
-python3 disk_agent.py --path /data/binaries --port 9090
-```
-
-systemd 서비스로 등록하면 서버 재시작 시 자동 실행됩니다. 서비스 파일은 `disk-agent/disk-agent.service`에 포함되어 있습니다:
-
-```bash
-# 파일 복사
+# 바이너리 서버에서 설치
 sudo mkdir -p /opt/disk-agent
-sudo cp disk_agent.py /opt/disk-agent/
-sudo cp disk-agent.service /etc/systemd/system/
+sudo cp ~/disk_agent.py /opt/disk-agent/
+sudo cp ~/disk-agent.service /etc/systemd/system/
 
-# 필요 시 ExecStart의 --path, --port 값을 환경에 맞게 수정
+# 필요 시 --path, --port 수정
 sudo vi /etc/systemd/system/disk-agent.service
 
 # 서비스 등록 및 시작
 sudo systemctl enable --now disk-agent
 ```
 
-#### 동작 확인
+**3) 동작 확인**
 
 ```bash
-# Disk Agent 확인
-curl http://localhost:9090/health
-curl http://localhost:9090/disk-usage
-
-# WebDAV 확인
-curl -X PROPFIND http://localhost:8080/
+curl http://localhost:9090/health          # Disk Agent
+curl http://localhost:9090/disk-usage      # 디스크 사용량
+curl -X PROPFIND http://localhost:8080/    # WebDAV
 ```
 
-### 2단계: 관리 서버 설정
-
-관리 서버에서 Docker Compose로 앱과 DB를 실행합니다.
+#### 관리 서버
 
 ```bash
-# 소스 클론
 git clone <repo-url> && cd binary-manager
-
-# 초기 설정 (~/binary-manager-backup/ 에 config.yaml과 mysql/ 생성)
 ./setup.sh
 ```
 
-#### 설정 파일 수정
-
-`~/binary-manager-backup/config.yaml`을 열어 바이너리 서버 정보를 입력합니다:
+`~/binary-manager-backup/config.yaml` 수정:
 
 ```yaml
-demo_mode: false    # 반드시 false로 변경
+demo_mode: false
 
 binary_servers:
   - name: "custom"
-    webdav_url: "http://custom-server:8080"       # 바이너리 서버의 WebDAV 주소
-    disk_agent_url: "http://custom-server:9090"   # 바이너리 서버의 Disk Agent 주소
-    binary_root_path: "/data/binaries"            # 바이너리 서버의 빌드 저장 경로
-    trigger_threshold_percent: 90                 # 이 사용률 초과 시 정리 시작
-    target_threshold_percent: 80                  # 이 사용률 이하로 내려가면 정리 중단
-    check_interval_minutes: 5                     # 디스크 점검 주기
-  - name: "mobile"
-    webdav_url: "http://mobile-server:8080"
-    disk_agent_url: "http://mobile-server:9090"
+    webdav_url: "http://custom-server:8080"
+    disk_agent_url: "http://custom-server:9090"
     binary_root_path: "/data/binaries"
     trigger_threshold_percent: 90
     target_threshold_percent: 80
     check_interval_minutes: 5
 
 auth:
-  shared_password: "your-secure-password"   # 웹 UI 로그인 비밀번호
-  jwt_secret: "your-random-secret"          # JWT 서명 키 (랜덤 문자열)
+  shared_password: "your-secure-password"
+  jwt_secret: "your-random-secret"
 ```
-
-#### 실행
 
 ```bash
 docker compose up --build -d
 ```
 
-http://localhost:8080 접속 → 설정한 비밀번호로 로그인
+http://localhost:8080 접속 → Settings 페이지에서 **연결 테스트**로 바이너리 서버 연결 확인
 
-#### 연결 확인
-
-Settings 페이지에서 **연결 테스트** 버튼을 클릭하여 각 바이너리 서버와의 WebDAV/Disk Agent 연결을 확인합니다.
-
-### 데모 모드 (바이너리 서버 없이 테스트)
-
-바이너리 서버 없이 UI를 먼저 확인하고 싶다면 데모 모드로 실행합니다:
+종료:
 
 ```bash
-./setup.sh
-docker compose up --build
+docker compose down
 ```
-
-`config.yaml`의 `demo_mode: true` (기본값)로 가짜 데이터가 생성됩니다.
-http://localhost:8080 접속 후 비밀번호 `changeme`로 로그인합니다.
 
 ## 설정
 

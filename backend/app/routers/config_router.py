@@ -79,7 +79,7 @@ def test_connection(user: str = Depends(require_admin)):
 
         # Test Disk Agent health
         try:
-            resp = httpx.get(f"{server.disk_agent_url.rstrip('/')}/health", timeout=10)
+            resp = httpx.get(f"{server.disk_agent_url.rstrip('/')}/health", timeout=3)
             resp.raise_for_status()
             result["disk_agent"] = {"ok": True, "message": "Connected"}
         except Exception as e:
@@ -90,7 +90,7 @@ def test_connection(user: str = Depends(require_admin)):
             resp = httpx.get(
                 f"{server.disk_agent_url.rstrip('/')}/files/list",
                 params={"path": "", "depth": 1},
-                timeout=10,
+                timeout=3,
             )
             resp.raise_for_status()
             entries = resp.json().get("entries", [])

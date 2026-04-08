@@ -167,16 +167,33 @@ export default function SettingsPage() {
     );
   }
 
-  const inputCls = "w-full px-3 py-2 border border-gray-200 rounded-lg text-[13px] focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent transition-shadow";
+  const inputCls = "w-full px-3 py-2 border border-gray-200 rounded-lg text-[13px] focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-shadow";
   const labelCls = "block text-[12px] font-medium text-gray-500 mb-1";
 
   return (
     <div>
-      <h2 className="text-xl font-semibold text-gray-900 mb-8">Settings</h2>
-
       <form onSubmit={handleSave} className="space-y-5 max-w-3xl">
+        {/* Header with Save */}
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-semibold text-gray-900">Settings</h2>
+          <div className="flex items-center gap-3">
+            {message && (
+              <span className={`text-[13px] ${message.includes("success") ? "text-emerald-500" : "text-red-500"}`}>
+                {message}
+              </span>
+            )}
+            <button
+              type="submit"
+              disabled={saving}
+              className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-indigo-500 to-indigo-600 text-white rounded-lg shadow-sm shadow-indigo-200 text-[13px] font-medium hover:from-indigo-600 hover:to-indigo-700 disabled:opacity-40 transition-all"
+            >
+              {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+              Save
+            </button>
+          </div>
+        </div>
         {/* Retention Defaults */}
-        <div className="bg-white border border-gray-200 rounded-xl p-5">
+        <div className="bg-white border border-gray-200/60 rounded-xl shadow-sm p-5">
           <div className="flex items-center gap-2 mb-4">
             <Clock size={16} className="text-gray-400" strokeWidth={1.8} />
             <h3 className="text-[14px] font-semibold text-gray-900">
@@ -233,7 +250,7 @@ export default function SettingsPage() {
         </div>
 
         {/* Binary Servers */}
-        <div className="bg-white border border-gray-200 rounded-xl p-5">
+        <div className="bg-white border border-gray-200/60 rounded-xl shadow-sm p-5">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <Server size={16} className="text-gray-400" strokeWidth={1.8} />
@@ -261,7 +278,7 @@ export default function SettingsPage() {
                       value={server.name}
                       onChange={(e) => updateServer(i, "name", e.target.value)}
                       placeholder="Server name (e.g. custom, mobile)"
-                      className="px-3 py-2 border border-gray-200 rounded-lg text-[13px] font-semibold flex-1 mr-2 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+                      className="px-3 py-2 border border-gray-200 rounded-lg text-[13px] font-semibold flex-1 mr-2 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
                     />
                     <button
                       type="button"
@@ -362,7 +379,7 @@ export default function SettingsPage() {
                             value={cp.path}
                             onChange={(e) => updateCustomProject(i, j, "path", e.target.value)}
                             placeholder="e.g. automotive/dev"
-                            className="flex-1 px-3 py-1.5 border border-gray-200 rounded-lg text-[12px] font-mono focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+                            className="flex-1 px-3 py-1.5 border border-gray-200 rounded-lg text-[12px] font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
                           />
                           <div className="flex items-center gap-1">
                             <input
@@ -370,7 +387,7 @@ export default function SettingsPage() {
                               min={1}
                               value={cp.retention_days}
                               onChange={(e) => updateCustomProject(i, j, "retention_days", Number(e.target.value))}
-                              className="w-16 px-2 py-1.5 border border-gray-200 rounded-lg text-[12px] text-center focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+                              className="w-16 px-2 py-1.5 border border-gray-200 rounded-lg text-[12px] text-center focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
                             />
                             <span className="text-[11px] text-gray-400">d</span>
                           </div>
@@ -418,7 +435,7 @@ export default function SettingsPage() {
                 type="button"
                 onClick={handleTestConnection}
                 disabled={testing}
-                className="flex items-center gap-1.5 px-3.5 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-40 text-[13px] font-medium transition-colors"
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-indigo-500 to-indigo-600 text-white rounded-lg hover:from-indigo-600 hover:to-indigo-700 shadow-sm shadow-indigo-200 disabled:opacity-40 text-[13px] font-medium transition-colors"
               >
                 {testing ? <Loader2 size={14} className="animate-spin" /> : <Wifi size={14} />}
                 Test All Connections
@@ -427,22 +444,6 @@ export default function SettingsPage() {
           )}
         </div>
 
-        {/* Save */}
-        <div className="flex items-center gap-3">
-          <button
-            type="submit"
-            disabled={saving}
-            className="flex items-center gap-1.5 px-5 py-2.5 bg-gray-900 text-white rounded-xl text-[13px] font-medium hover:bg-gray-800 disabled:opacity-40 transition-colors"
-          >
-            {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-            Save Settings
-          </button>
-          {message && (
-            <span className={`text-[13px] ${message.includes("success") ? "text-emerald-500" : "text-red-500"}`}>
-              {message}
-            </span>
-          )}
-        </div>
       </form>
     </div>
   );

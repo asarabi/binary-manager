@@ -95,7 +95,7 @@ export default function LogsPage() {
       </h2>
 
       {runs.length === 0 ? (
-        <div className="bg-white border border-gray-200 rounded-xl p-12 text-center text-[13px] text-gray-400">
+        <div className="bg-white border border-gray-200/60 rounded-xl shadow-sm p-12 text-center text-[13px] text-gray-400">
           No cleanup runs yet
         </div>
       ) : (
@@ -103,7 +103,7 @@ export default function LogsPage() {
           {runs.map((run) => (
             <div
               key={run.id}
-              className="bg-white border border-gray-200 rounded-xl overflow-hidden"
+              className="bg-white border border-gray-200/60 rounded-xl shadow-sm overflow-hidden"
             >
               <button
                 onClick={() => toggleRun(run.id)}

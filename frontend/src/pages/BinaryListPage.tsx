@@ -96,7 +96,7 @@ export default function BinaryListPage() {
         )}
       </div>
 
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+      <div className="bg-white border border-gray-200/60 rounded-xl shadow-sm overflow-hidden">
         <ProjectTable projects={filtered} showServer={activeServer === "all"} />
         {filtered.length === 0 && (
           <p className="text-[13px] text-gray-400 text-center py-12">

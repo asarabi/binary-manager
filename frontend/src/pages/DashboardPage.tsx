@@ -171,7 +171,7 @@ export default function DashboardPage() {
           <button
             onClick={handleDryRun}
             disabled={cleanupRunning || dryRunLoading}
-            className="flex items-center gap-1.5 px-3.5 py-2 text-[13px] font-medium border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40 transition-colors"
+            className="flex items-center gap-1.5 px-3.5 py-2 text-[13px] font-medium border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-gray-300 disabled:opacity-40 transition-all shadow-sm"
           >
             {dryRunLoading ? (
               <Loader2 size={14} className="animate-spin" />
@@ -183,7 +183,7 @@ export default function DashboardPage() {
           <button
             onClick={handleCleanup}
             disabled={cleanupRunning}
-            className="flex items-center gap-1.5 px-3.5 py-2 text-[13px] font-medium bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:opacity-40 transition-colors"
+            className="flex items-center gap-1.5 px-3.5 py-2 text-[13px] font-medium bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg hover:from-red-600 hover:to-red-700 disabled:opacity-40 transition-all shadow-sm shadow-red-200 hover:shadow-md hover:shadow-red-300"
           >
             {cleanupRunning ? (
               <Loader2 size={14} className="animate-spin" />
@@ -211,7 +211,7 @@ export default function DashboardPage() {
             />
             <div
               onClick={() => navigate("/binaries")}
-              className="bg-white border border-gray-200 rounded-xl p-5 cursor-pointer hover:border-gray-300 transition-colors"
+              className="bg-white border border-gray-200/60 rounded-xl p-5 cursor-pointer shadow-sm hover:shadow-md hover:border-gray-300 transition-all"
             >
               <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wider mb-3">
                 Projects
@@ -229,7 +229,7 @@ export default function DashboardPage() {
             </div>
             <div
               onClick={() => navigate("/binaries")}
-              className="bg-white border border-gray-200 rounded-xl p-5 cursor-pointer hover:border-gray-300 transition-colors"
+              className="bg-white border border-gray-200/60 rounded-xl p-5 cursor-pointer shadow-sm hover:shadow-md hover:border-gray-300 transition-all"
             >
               <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wider mb-3">
                 Builds
@@ -253,7 +253,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
         <div
           onClick={() => navigate("/binaries")}
-          className="bg-white border border-gray-200 rounded-xl p-5 cursor-pointer hover:border-gray-300 transition-colors"
+          className="bg-white border border-gray-200/60 rounded-xl p-5 cursor-pointer shadow-sm hover:shadow-md hover:border-gray-300 transition-all"
         >
           <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wider mb-3">
             Total
@@ -283,7 +283,7 @@ export default function DashboardPage() {
             </div>
           </div>
         </div>
-        <div className="bg-white border border-gray-200 rounded-xl p-5">
+        <div className="bg-white border border-gray-200/60 rounded-xl p-5 shadow-sm">
           <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wider mb-3">
             Last Cleanup
           </p>

@@ -135,7 +135,7 @@ export default function ProjectDetailPage() {
         />
       </div>
 
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+      <div className="bg-white border border-gray-200/60 rounded-xl shadow-sm overflow-hidden">
         <table className="min-w-full">
           <thead>
             <tr className="border-b border-gray-100">

@@ -9,7 +9,6 @@ interface CustomProject {
 
 interface BinaryServer {
   name: string;
-  webdav_url: string;
   disk_agent_url: string;
   binary_root_path: string;
   project_depth: number;
@@ -27,8 +26,8 @@ interface RetentionConfig {
 
 interface ServerTestResult {
   name: string;
-  webdav: { ok: boolean; message: string };
   disk_agent: { ok: boolean; message: string };
+  file_list: { ok: boolean; message: string };
 }
 
 export default function SettingsPage() {
@@ -85,7 +84,6 @@ export default function SettingsPage() {
       ...servers,
       {
         name: "",
-        webdav_url: "",
         disk_agent_url: "",
         binary_root_path: "/data/binaries",
         project_depth: 1,
@@ -273,27 +271,15 @@ export default function SettingsPage() {
                       <Trash2 size={15} />
                     </button>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className={labelCls}>WebDAV URL</label>
-                      <input
-                        type="text"
-                        value={server.webdav_url}
-                        onChange={(e) => updateServer(i, "webdav_url", e.target.value)}
-                        placeholder="http://server:8080"
-                        className={`${inputCls} font-mono`}
-                      />
-                    </div>
-                    <div>
-                      <label className={labelCls}>Disk Agent URL</label>
-                      <input
-                        type="text"
-                        value={server.disk_agent_url}
-                        onChange={(e) => updateServer(i, "disk_agent_url", e.target.value)}
-                        placeholder="http://server:9090"
-                        className={`${inputCls} font-mono`}
-                      />
-                    </div>
+                  <div>
+                    <label className={labelCls}>Disk Agent URL</label>
+                    <input
+                      type="text"
+                      value={server.disk_agent_url}
+                      onChange={(e) => updateServer(i, "disk_agent_url", e.target.value)}
+                      placeholder="http://server:9090"
+                      className={`${inputCls} font-mono`}
+                    />
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
@@ -407,13 +393,13 @@ export default function SettingsPage() {
 
                   {result && (
                     <div className="flex items-center gap-4 text-[12px] pt-2 border-t border-gray-100">
-                      <span className={`flex items-center gap-1 ${result.webdav.ok ? "text-emerald-500" : "text-red-500"}`}>
-                        {result.webdav.ok ? <Wifi size={13} /> : <WifiOff size={13} />}
-                        WebDAV: {result.webdav.message}
-                      </span>
                       <span className={`flex items-center gap-1 ${result.disk_agent.ok ? "text-emerald-500" : "text-red-500"}`}>
                         {result.disk_agent.ok ? <Wifi size={13} /> : <WifiOff size={13} />}
                         Agent: {result.disk_agent.message}
+                      </span>
+                      <span className={`flex items-center gap-1 ${result.file_list.ok ? "text-emerald-500" : "text-red-500"}`}>
+                        {result.file_list.ok ? <Wifi size={13} /> : <WifiOff size={13} />}
+                        Files: {result.file_list.message}
                       </span>
                     </div>
                   )}

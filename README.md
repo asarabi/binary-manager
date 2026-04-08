@@ -64,7 +64,7 @@ backend/
     config.py                # YAML 설정 로더 (Pydantic 모델)
     auth.py                  # JWT 인증 (사용자명/비밀번호, admin/user 역할)
     database.py              # MySQL 엔진 + 세션
-    models.py                # SQLAlchemy 모델 (CleanupRun, CleanupLog)
+    models.py                # SQLAlchemy 모델 (CleanupRun, CleanupLog, BuildRetentionOverride)
     schemas.py               # Pydantic 요청/응답 스키마
     routers/
       auth_router.py         # 로그인 엔드포인트
@@ -121,11 +121,10 @@ frontend/
 
 ```bash
 git clone <repo-url> && cd binary-manager
-./setup.sh
 docker compose up --build
 ```
 
-http://localhost:8080 접속 → `cicd` / `tmxkqjrtm1@` (admin) 또는 `share` / `share` (user)로 로그인
+http://localhost:9092 접속 → `cicd` / `tmxkqjrtm1@` (admin) 또는 `share` / `share` (user)로 로그인
 
 종료:
 
@@ -167,10 +166,9 @@ curl http://localhost:9090/files/list      # 파일 목록
 
 ```bash
 git clone <repo-url> && cd binary-manager
-./setup.sh
 ```
 
-`~/binary-manager-backup/config.yaml` 수정:
+`backend/config.yaml` 수정:
 
 ```yaml
 demo_mode: false
@@ -207,7 +205,7 @@ auth:
 docker compose up --build -d
 ```
 
-http://localhost:8080 접속 → admin 계정으로 로그인 후 Settings 페이지에서 **연결 테스트**로 바이너리 서버 연결 확인
+http://localhost:9092 접속 → admin 계정으로 로그인 후 Settings 페이지에서 **연결 테스트**로 바이너리 서버 연결 확인
 
 종료:
 
@@ -248,6 +246,7 @@ score = retention_days - age_days  (남은 일수)
 - 만료된 빌드는 score가 음수이므로 우선 삭제됨
 - 동일 보관 기간 내에서 오래된 빌드가 먼저 삭제됨
 - Custom project는 더 긴 retention_days를 가질 수 있어 보호됨
+- 보관 기간 우선순위: 빌드별 override → 프로젝트별 custom → 전역 default
 
 ### 히스테리시스 (서버별 설정)
 
@@ -275,11 +274,14 @@ health와 login을 제외한 모든 엔드포인트는 `Authorization: Bearer <t
 | GET | `/api/binaries` | 보관 정보 포함 전체 프로젝트 목록 (server 필터 지원) |
 | GET | `/api/binaries/detail/{project}` | 프로젝트별 빌드 목록 (남은 일수 포함) |
 | DELETE | `/api/binaries/detail/{project}/{build}` | 특정 빌드 삭제 |
+| PUT | `/api/binaries/detail/{project}/{build}/retention` | 빌드별 보관 기간 설정 |
+| DELETE | `/api/binaries/detail/{project}/{build}/retention` | 빌드별 보관 기간 override 제거 |
 | GET | `/api/config` | 현재 설정 조회 |
 | PUT | `/api/config` | 설정 수정 (admin만 가능) |
 | POST | `/api/config/test-connection` | 서버 연결 테스트 (admin만 가능) |
 | POST | `/api/cleanup/trigger` | 수동 정리 실행 (dry-run 지원) |
-| GET | `/api/cleanup/status` | 현재 정리 작업 상태 조회 |
+| GET | `/api/cleanup/status` | 현재 정리 작업 상태 + 실시간 로그 |
+| POST | `/api/cleanup/abort` | 진행 중인 정리 작업 중단 |
 | GET | `/api/logs/runs` | 정리 실행 이력 (페이지네이션) |
 | GET | `/api/logs` | 정리 로그 (페이지네이션, 실행 ID 필터) |
 
@@ -336,11 +338,11 @@ docker compose logs -f frontend          # 프론트엔드만
 | 서비스 | 컨테이너 | 포트 | 설명 |
 |--------|----------|------|------|
 | `db` | binary-manager-db | 3306 (내부) | MySQL 8.0 |
-| `backend` | binary-manager-backend | 8000 (내부) | FastAPI + uvicorn |
-| `frontend` | binary-manager-frontend | 8080 → 80 | nginx (SPA + API 프록시) |
-| `disk-agent` | binary-manager-disk-agent | 9090 | FastAPI 디스크 에이전트 |
+| `backend` | binary-manager-backend | 9093 → 8000 | FastAPI + uvicorn |
+| `frontend` | binary-manager-frontend | 9092 → 80 | nginx (SPA + API 프록시) |
+| `disk-agent` | binary-manager-disk-agent | 9091 → 9090 | FastAPI 디스크 에이전트 |
 
-> **접속**: http://localhost:8080 → `cicd` / `tmxkqjrtm1@` (admin) 또는 `share` / `share` (user)
+> **접속**: http://localhost:9092 → `cicd` / `tmxkqjrtm1@` (admin) 또는 `share` / `share` (user)
 
 #### 변경 반영 방법
 
@@ -348,17 +350,13 @@ docker compose logs -f frontend          # 프론트엔드만
 |-----------|----------|
 | `backend/app/**/*.py` | `docker compose up --build backend -d` |
 | `frontend/src/**` | `docker compose up --build frontend -d` |
-| `config.yaml` | `docker compose restart backend` |
+| `config.yaml` | `docker compose up --build backend -d` |
 | `requirements.txt` | `docker compose up --build backend -d` |
 | `package.json` | `docker compose up --build frontend -d` |
 
 ### 배포
 
 ```bash
-# 최초 1회
-./setup.sh
-
-# 빌드 및 백그라운드 실행
 docker compose up --build -d
 ```
 
@@ -382,7 +380,7 @@ docker compose logs -f backend  # 백엔드 로그 실시간 확인
 | 페이지 | 설명 |
 |---|---|
 | **Login** | 사용자명/비밀번호 인증 (admin/user 역할 구분) |
-| **Dashboard** | 서버별 디스크 사용량 게이지, 프로젝트/빌드 통계, 수동 정리 실행 (dry-run 포함) |
-| **Binaries** | All/서버별 탭으로 프로젝트 목록 조회; 빌드별 남은 일수 및 만료 상태 확인 |
+| **Dashboard** | 서버별 디스크 사용량 게이지, 프로젝트/빌드 통계, 수동 정리 실행 (dry-run/실행 로그/중단 지원) |
+| **Binaries** | All/서버별 탭으로 프로젝트 목록 조회; 빌드별 남은 일수, 만료 상태, 개별 보관 기간 설정 |
 | **Settings** | 서버 관리, custom project별 보관 기간, 로그 보관 기간 설정, 연결 테스트 (admin 전용) |
 | **Logs** | 정리 실행 이력, 서버별 그룹핑된 상세 로그 |

@@ -51,11 +51,14 @@ GET  /api/dashboard/stats         # 서버별 디스크 사용량, 프로젝트/
 GET  /api/binaries                # 프로젝트 목록 (보관 정보, 서버 필터)
 GET  /api/binaries/detail/{p}     # 빌드 목록 (남은 일수 포함)
 DELETE /api/binaries/detail/{p}/{b}  # 수동 삭제
+PUT  /api/binaries/detail/{p}/{b}/retention  # 빌드별 보관 기간 설정
+DELETE /api/binaries/detail/{p}/{b}/retention # 빌드별 override 제거
 GET  /api/config                  # 현재 설정 조회
 PUT  /api/config                  # 설정 수정 (admin 전용)
 POST /api/config/test-connection  # 서버 연결 테스트 (admin 전용)
 POST /api/cleanup/trigger         # {dry_run: bool}
-GET  /api/cleanup/status          # 정리 진행 상태
+GET  /api/cleanup/status          # 정리 진행 상태 + 실시간 로그
+POST /api/cleanup/abort           # 진행 중인 정리 중단
 GET  /api/logs/runs               # 정리 실행 이력 (페이지네이션)
 GET  /api/logs                    # 삭제 상세 이력 (페이지네이션)
 GET  /api/health                  # 헬스 체크
@@ -105,3 +108,5 @@ cd backend && python -m pytest tests/ -v
 - 클린업은 백그라운드 스레드에서 실행 (API 응답 비차단)
 - 동시에 하나의 클린업만 실행 가능 (`_cleanup_running` 플래그로 뮤텍스)
 - 멀티 바이너리 서버 지원, 서버별 독립 임계값
+- 빌드별 보관 기간 개별 설정 가능 (DB에 저장, admin/user 모두 사용 가능)
+- 클린업 실행 시 실시간 로그 제공 및 중단 가능

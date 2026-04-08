@@ -121,6 +121,7 @@ frontend/
 
 ```bash
 git clone <repo-url> && cd binary-manager
+./setup.sh
 docker compose up --build
 ```
 
@@ -166,9 +167,10 @@ curl http://localhost:9090/files/list      # 파일 목록
 
 ```bash
 git clone <repo-url> && cd binary-manager
+./setup.sh
 ```
 
-`backend/config.yaml` 수정:
+`~/binary-manager-backup/config.yaml` 수정:
 
 ```yaml
 demo_mode: false
@@ -357,6 +359,7 @@ docker compose logs -f frontend          # 프론트엔드만
 ### 배포
 
 ```bash
+./setup.sh                  # 최초 1회
 docker compose up --build -d
 ```
 

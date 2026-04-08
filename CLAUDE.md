@@ -77,6 +77,7 @@ python disk_agent.py --path /your/binaries --port 9090 --reload
 
 ### Docker
 ```bash
+./setup.sh                         # 최초 1회 (~/binary-manager-backup/ 생성)
 docker compose up --build          # 전체 스택
 docker compose up --build -d       # 백그라운드
 docker compose down                # 중지
@@ -131,7 +132,8 @@ docker compose up --build backend  # 단일 서비스 재빌드
 
 ## 데이터 저장
 - MySQL 데이터: `~/binary-manager-backup/mysql/` (호스트 볼륨)
-- `config.yaml`: Docker 이미지에 포함 (변경 시 재빌드)
+- `config.yaml`: `~/binary-manager-backup/config.yaml` (호스트 볼륨 마운트, Settings에서 변경 시 영구 저장)
+- `setup.sh`로 초기 디렉토리 및 config.yaml 생성
 
 ## 테스트
 - 단위 테스트는 `retention_engine.py` 점수 계산에 집중

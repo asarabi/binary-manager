@@ -1,15 +1,16 @@
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from ..auth import get_current_user
 from ..config import get_config
 from ..database import get_db
-from ..models import CleanupLog
+from ..models import BuildRetentionOverride, CleanupLog
 from ..schemas import BuildInfo, ProjectDetail, ProjectInfo
 from ..services import disk_agent_service
-from ..services.retention_engine import get_retention_days, is_custom_project
+from ..services.retention_engine import get_retention_days, has_build_override, is_custom_project
 
 router = APIRouter(prefix="/api/binaries", tags=["binaries"])
 
@@ -50,11 +51,11 @@ def get_project_builds(
     project: str,
     server: str = Query("", alias="server"),
     user: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     config = get_config()
     srv = _find_server(config, server)
 
-    retention = get_retention_days(srv, project)
     builds = disk_agent_service.list_builds(srv, project)
 
     now = datetime.utcnow()
@@ -62,6 +63,7 @@ def get_project_builds(
     for b in builds:
         modified = b["modified_at"]
         age_days = (now - modified).total_seconds() / 86400
+        retention = get_retention_days(srv, project, b["build_number"], db)
         remaining = retention - age_days
         build_infos.append(
             BuildInfo(
@@ -71,13 +73,15 @@ def get_project_builds(
                 retention_days=retention,
                 remaining_days=round(remaining, 1),
                 expired=age_days >= retention,
+                has_override=has_build_override(srv, project, b["build_number"], db),
             )
         )
 
+    project_retention = get_retention_days(srv, project)
     build_infos.sort(key=lambda b: b.build_number)
     return ProjectDetail(
         name=project,
-        retention_days=retention,
+        retention_days=project_retention,
         is_custom=is_custom_project(srv, project),
         builds=build_infos,
     )
@@ -119,6 +123,66 @@ def delete_build(
 
     disk_agent_service.invalidate_cache()
     return {"message": f"Deleted {project}/{build}", "size_bytes": size}
+
+
+class RetentionOverrideRequest(BaseModel):
+    retention_days: int
+
+
+@router.put("/detail/{project:path}/{build}/retention")
+def set_build_retention(
+    project: str,
+    build: str,
+    body: RetentionOverrideRequest,
+    server: str = Query("", alias="server"),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    config = get_config()
+    srv = _find_server(config, server)
+
+    override = db.query(BuildRetentionOverride).filter(
+        BuildRetentionOverride.server_name == srv.name,
+        BuildRetentionOverride.project_name == project,
+        BuildRetentionOverride.build_number == build,
+    ).first()
+
+    if override:
+        override.retention_days = body.retention_days
+    else:
+        override = BuildRetentionOverride(
+            server_name=srv.name,
+            project_name=project,
+            build_number=build,
+            retention_days=body.retention_days,
+        )
+        db.add(override)
+
+    db.commit()
+    return {"message": f"Retention set to {body.retention_days}d for {project}/{build}"}
+
+
+@router.delete("/detail/{project:path}/{build}/retention")
+def remove_build_retention(
+    project: str,
+    build: str,
+    server: str = Query("", alias="server"),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    config = get_config()
+    srv = _find_server(config, server)
+
+    deleted = db.query(BuildRetentionOverride).filter(
+        BuildRetentionOverride.server_name == srv.name,
+        BuildRetentionOverride.project_name == project,
+        BuildRetentionOverride.build_number == build,
+    ).delete()
+    db.commit()
+
+    if not deleted:
+        raise HTTPException(status_code=404, detail="No override found")
+    return {"message": f"Retention override removed for {project}/{build}"}
 
 
 def _find_server(config, server_name: str):

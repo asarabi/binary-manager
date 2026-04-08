@@ -58,7 +58,14 @@ def trigger_cleanup(
     return {"message": "Cleanup started"}
 
 
-@router.get("/status", response_model=CleanupStatusResponse)
+@router.get("/status")
 def get_status(user: str = Depends(get_current_user)):
-    status = retention_engine.get_status()
-    return CleanupStatusResponse(**status)
+    return retention_engine.get_status()
+
+
+@router.post("/abort")
+def abort_cleanup(user: str = Depends(get_current_user)):
+    if not retention_engine.is_running():
+        raise HTTPException(status_code=409, detail="No cleanup in progress")
+    retention_engine.request_abort()
+    return {"message": "Abort requested"}

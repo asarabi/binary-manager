@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 
 from ..config import BinaryServerConfig, get_config
-from ..models import CleanupLog, CleanupRun
+from ..models import BuildRetentionOverride, CleanupLog, CleanupRun
 from . import disk_agent_service
 
 logger = logging.getLogger(__name__)
@@ -13,6 +13,8 @@ logger = logging.getLogger(__name__)
 _cleanup_running = False
 _current_run_id: int | None = None
 _progress: str | None = None
+_abort_requested = False
+_progress_logs: list[str] = []
 
 
 def is_running() -> bool:
@@ -24,15 +26,43 @@ def get_status() -> dict:
         "running": _cleanup_running,
         "current_run_id": _current_run_id,
         "progress": _progress,
+        "logs": list(_progress_logs),
     }
 
 
-def get_retention_days(server: BinaryServerConfig, project_path: str) -> int:
-    """Returns retention_days for a project. Custom override or global default."""
+def request_abort():
+    global _abort_requested
+    if _cleanup_running:
+        _abort_requested = True
+
+
+def get_retention_days(
+    server: BinaryServerConfig, project_path: str, build_number: str | None = None, db: Session | None = None
+) -> int:
+    """Returns retention_days. Priority: build override → project custom → global default."""
+    if build_number and db:
+        override = db.query(BuildRetentionOverride).filter(
+            BuildRetentionOverride.server_name == server.name,
+            BuildRetentionOverride.project_name == project_path,
+            BuildRetentionOverride.build_number == build_number,
+        ).first()
+        if override:
+            return override.retention_days
     for cp in server.custom_projects:
         if cp.path == project_path:
             return cp.retention_days
     return get_config().retention.default_days
+
+
+def has_build_override(
+    server: BinaryServerConfig, project_path: str, build_number: str, db: Session
+) -> bool:
+    """Check if a build has a retention override."""
+    return db.query(BuildRetentionOverride).filter(
+        BuildRetentionOverride.server_name == server.name,
+        BuildRetentionOverride.project_name == project_path,
+        BuildRetentionOverride.build_number == build_number,
+    ).first() is not None
 
 
 def is_custom_project(server: BinaryServerConfig, project_path: str) -> bool:
@@ -46,14 +76,13 @@ def compute_score(retention_days: int, age_days: float) -> float:
     return retention_days - age_days
 
 
-def _collect_all_builds(server: BinaryServerConfig) -> list[dict]:
+def _collect_all_builds(server: BinaryServerConfig, db: Session) -> list[dict]:
     """Collect all builds from all projects on a server with scoring info."""
     now = datetime.utcnow()
     projects = disk_agent_service.list_projects(server)
     all_builds = []
 
     for project in projects:
-        retention_days = get_retention_days(server, project)
         builds = disk_agent_service.list_builds(server, project)
 
         for build in builds:
@@ -67,6 +96,7 @@ def _collect_all_builds(server: BinaryServerConfig) -> list[dict]:
                             project, build["build_number"], int(age_minutes))
                 continue
 
+            retention_days = get_retention_days(server, project, build["build_number"], db)
             score = compute_score(retention_days, age_days)
             all_builds.append({
                 "server": server.name,
@@ -83,11 +113,19 @@ def _collect_all_builds(server: BinaryServerConfig) -> list[dict]:
     return all_builds
 
 
+def _log(msg: str):
+    """Append to progress logs and set current progress."""
+    global _progress
+    _progress = msg
+    _progress_logs.append(msg)
+    logger.info(msg)
+
+
 def _run_cleanup_for_server(
     server: BinaryServerConfig, db: Session, run: CleanupRun, dry_run: bool
 ) -> tuple[int, int]:
     """Run cleanup for a single server. Returns (builds_deleted, bytes_freed)."""
-    global _progress
+    global _abort_requested
 
     trigger_threshold = server.trigger_threshold_percent
     target_threshold = server.target_threshold_percent
@@ -96,13 +134,12 @@ def _run_cleanup_for_server(
     current_usage = disk_info["usage_percent"]
 
     if current_usage < trigger_threshold and not dry_run:
-        _progress = f"[{server.name}] Disk {current_usage}% < trigger {trigger_threshold}%, skipping"
-        logger.info(_progress)
+        _log(f"[{server.name}] Disk {current_usage}% < trigger {trigger_threshold}%, skipping")
         return 0, 0
 
-    _progress = f"[{server.name}] Collecting build list..."
-    all_builds = _collect_all_builds(server)
-    logger.info("[%s] Found %d deletable builds", server.name, len(all_builds))
+    _log(f"[{server.name}] Collecting build list...")
+    all_builds = _collect_all_builds(server, db)
+    _log(f"[{server.name}] Found {len(all_builds)} deletable builds")
 
     builds_deleted = 0
     bytes_freed = 0
@@ -116,30 +153,31 @@ def _run_cleanup_for_server(
         estimated_size_per_build = 0
 
     for i, build in enumerate(all_builds):
+        if _abort_requested:
+            _log(f"[{server.name}] Aborted by user")
+            break
+
         if dry_run:
             if simulated_usage <= target_threshold:
-                _progress = f"[{server.name}] Target reached (simulated): {simulated_usage:.1f}% <= {target_threshold}%"
-                logger.info(_progress)
+                _log(f"[{server.name}] Target reached (simulated): {simulated_usage:.1f}% <= {target_threshold}%")
                 break
         else:
             disk_info = disk_agent_service.get_disk_usage(server)
             current_usage = disk_info["usage_percent"]
             if current_usage <= target_threshold:
-                _progress = f"[{server.name}] Target reached: {current_usage}% <= {target_threshold}%"
-                logger.info(_progress)
+                _log(f"[{server.name}] Target reached: {current_usage}% <= {target_threshold}%")
                 break
 
         rel_path = f"{build['project']}/{build['build_number']}"
         size = disk_agent_service.get_directory_size(server, rel_path) if not dry_run else 0
         remaining = build["score"]
 
-        _progress = f"{'[DRY RUN] ' if dry_run else ''}[{server.name}] Deleting {build['project']}/{build['build_number']} (remaining: {remaining:.1f}d) [{i+1}/{len(all_builds)}]"
-        logger.info(_progress)
+        _log(f"{'[DRY RUN] ' if dry_run else ''}[{server.name}] Deleting {build['project']}/{build['build_number']} (remaining: {remaining:.1f}d) [{i+1}/{len(all_builds)}]")
 
         if not dry_run:
             success = disk_agent_service.delete_build(server, build["project"], build["build_number"])
             if not success:
-                logger.error("Failed to delete %s/%s on %s", build["project"], build["build_number"], server.name)
+                _log(f"[{server.name}] Failed to delete {build['project']}/{build['build_number']}")
                 continue
 
         log = CleanupLog(
@@ -165,13 +203,15 @@ def _run_cleanup_for_server(
 
 def run_cleanup(db: Session, trigger: str = "manual", dry_run: bool = False) -> CleanupRun:
     """Execute the cleanup algorithm across all servers."""
-    global _cleanup_running, _current_run_id, _progress
+    global _cleanup_running, _current_run_id, _progress, _abort_requested, _progress_logs
 
     if _cleanup_running:
         raise RuntimeError("Cleanup already in progress")
 
     _cleanup_running = True
-    _progress = "Starting..."
+    _abort_requested = False
+    _progress_logs = []
+    _log("Starting...")
 
     config = get_config()
     first_server = config.binary_servers[0] if config.binary_servers else None
@@ -202,7 +242,7 @@ def run_cleanup(db: Session, trigger: str = "manual", dry_run: bool = False) -> 
         run.builds_deleted = total_deleted
         run.bytes_freed = total_freed
         run.finished_at = datetime.utcnow()
-        run.status = "completed"
+        run.status = "aborted" if _abort_requested else "completed"
 
         if not dry_run and first_server:
             final_disk = disk_agent_service.get_disk_usage(first_server)
@@ -215,8 +255,8 @@ def run_cleanup(db: Session, trigger: str = "manual", dry_run: bool = False) -> 
         if not dry_run:
             _purge_old_logs(db, config.retention.log_retention_days)
 
-        _progress = f"Completed: {total_deleted} builds deleted, {total_freed} bytes freed"
-        logger.info(_progress)
+        status_msg = "Aborted" if _abort_requested else "Completed"
+        _log(f"{status_msg}: {total_deleted} builds deleted, {total_freed} bytes freed")
         return run
 
     except Exception as e:

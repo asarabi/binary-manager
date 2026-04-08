@@ -22,6 +22,17 @@ class CleanupRun(Base):
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+class BuildRetentionOverride(Base):
+    __tablename__ = "build_retention_overrides"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    server_name: Mapped[str] = mapped_column(String(100))
+    project_name: Mapped[str] = mapped_column(String(255))
+    build_number: Mapped[str] = mapped_column(String(50))
+    retention_days: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 class CleanupLog(Base):
     __tablename__ = "cleanup_logs"
 

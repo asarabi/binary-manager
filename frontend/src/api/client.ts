@@ -41,6 +41,25 @@ export const deleteBuild = (project: string, build: string, server?: string) =>
   api.delete(`/binaries/detail/${project}/${build}`, {
     params: server ? { server } : {},
   });
+export const setBuildRetention = (
+  project: string,
+  build: string,
+  retentionDays: number,
+  server?: string
+) =>
+  api.put(
+    `/binaries/detail/${project}/${build}/retention`,
+    { retention_days: retentionDays },
+    { params: server ? { server } : {} }
+  );
+export const removeBuildRetention = (
+  project: string,
+  build: string,
+  server?: string
+) =>
+  api.delete(`/binaries/detail/${project}/${build}/retention`, {
+    params: server ? { server } : {},
+  });
 
 // Config
 export const getConfig = () => api.get("/config");
@@ -52,6 +71,7 @@ export const testConnection = () => api.post("/config/test-connection");
 export const triggerCleanup = (dryRun: boolean) =>
   api.post("/cleanup/trigger", { dry_run: dryRun });
 export const getCleanupStatus = () => api.get("/cleanup/status");
+export const abortCleanup = () => api.post("/cleanup/abort");
 
 // Logs
 export const getCleanupRuns = (limit = 20, offset = 0) =>

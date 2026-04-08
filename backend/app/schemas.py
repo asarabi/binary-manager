@@ -46,6 +46,7 @@ class BuildInfo(BaseModel):
     remaining_days: float
     expired: bool
     size_bytes: int = 0
+    has_override: bool = False
 
 
 class ProjectInfo(BaseModel):

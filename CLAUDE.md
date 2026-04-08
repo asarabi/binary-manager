@@ -1,128 +1,141 @@
-# Binary Retention Manager - Claude Code Instructions
+# Binary Retention Manager - Claude Code 지침
 
-## Project Overview
-Android build binary retention manager with FastAPI backend and React frontend.
-Monitors disk usage on remote binary servers via WebDAV + Disk Agent HTTP, auto-deletes builds based on retention policies.
-Supports multiple binary servers with per-server disk thresholds.
+## 프로젝트 개요
+Android 빌드 바이너리 보관 관리 도구. FastAPI 백엔드 + React 프론트엔드.
+원격 바이너리 서버의 디스크 사용량을 Disk Agent HTTP API로 모니터링하고, 보관 정책에 따라 빌드를 자동 삭제한다.
+서버별 독립 디스크 임계값을 지원한다.
 
-## Tech Stack
-- **Backend**: Python 3.12, FastAPI, SQLAlchemy (MySQL), webdavclient3, httpx, APScheduler
-- **Frontend**: React 18, TypeScript, Vite, Tailwind CSS, lucide-react icons
-- **Disk Agent**: Standalone Python script (stdlib only) for binary servers - reports disk usage via HTTP
-- **Deploy**: Docker Compose (MySQL + unified app with nginx/uvicorn/supervisord)
+## 기술 스택
+- **Backend**: Python 3.12, FastAPI, SQLAlchemy (MySQL), httpx, APScheduler
+- **Frontend**: React 18, TypeScript, Vite, Tailwind CSS, lucide-react
+- **Disk Agent**: Python 3.12, FastAPI, uvicorn — 바이너리 서버에 배포. 디스크 사용량, 파일 목록/삭제 처리
+- **배포**: Docker Compose (MySQL + backend + frontend + disk-agent, 4개 서비스)
 
-## Project Structure
+## 프로젝트 구조
 ```
-Dockerfile             # Multi-stage build (frontend build + Python/nginx/supervisord)
-nginx.conf             # Reverse proxy (/api/ → localhost:8000) + SPA serving
-supervisord.conf       # Runs uvicorn + nginx in single container
-docker-compose.yml     # db + app (2 services)
-disk-agent/            # Standalone disk agent for binary servers
-  disk_agent.py        # HTTP server reporting disk usage (stdlib only)
-backend/app/           # FastAPI application
-  main.py              # Entry point, CORS, lifespan
-  config.py            # YAML config loader (Pydantic models)
-  auth.py              # JWT auth (username/password with admin/user roles)
-  database.py          # MySQL engine + session
-  models.py            # SQLAlchemy models (CleanupRun, CleanupLog)
-  schemas.py           # Pydantic request/response schemas
-  routers/             # API route handlers
-  services/            # Business logic (webdav, disk_agent, retention engine, scheduler)
-backend/tests/         # pytest tests
-backend/config.yaml    # Runtime configuration
-frontend/src/          # React SPA
-  api/client.ts        # Axios API client with JWT interceptor
-  context/             # React contexts (AuthContext)
-  pages/               # Page components
-  components/          # Shared UI components
+docker-compose.yml     # db + backend + frontend + disk-agent (4개 서비스)
+setup.sh               # 초기 설정 (~/binary-manager-backup/ 생성)
+disk-agent/            # 바이너리 서버용 Disk Agent
+  Dockerfile           # Python 3.12 + uvicorn
+  disk_agent.py        # FastAPI: 디스크 사용량, 파일 목록/삭제
+  requirements.txt     # fastapi, uvicorn
+backend/               # FastAPI 백엔드
+  Dockerfile           # Python 3.12 + uvicorn
+  app/
+    main.py            # 진입점, CORS, lifespan
+    config.py          # YAML 설정 로더 (Pydantic 모델)
+    auth.py            # JWT 인증 (username/password, admin/user 역할)
+    database.py        # MySQL 엔진 + 세션
+    models.py          # SQLAlchemy 모델 (CleanupRun, CleanupLog)
+    schemas.py         # Pydantic 요청/응답 스키마
+    routers/           # API 라우트 핸들러
+    services/          # 비즈니스 로직 (disk_agent 클라이언트, retention engine, scheduler)
+  tests/               # pytest 테스트
+  config.yaml          # 런타임 설정
+frontend/              # React SPA
+  Dockerfile           # Node 빌드 → nginx (SPA + API 프록시)
+  nginx.conf           # /api/ → backend:8000 프록시 + SPA fallback
+  src/
+    api/client.ts      # Axios API 클라이언트 (JWT 인터셉터)
+    context/           # React 컨텍스트 (AuthContext)
+    pages/             # 페이지 컴포넌트
+    components/        # 공유 UI 컴포넌트
 ```
 
-## Commands
+## 명령어
 
 ### Backend
 ```bash
-# Run tests
+# 테스트 실행
 cd backend && python -m pytest tests/ -v
 
-# Run dev server
+# 개발 서버 실행
 cd backend && uvicorn app.main:app --reload --port 8000
 
-# Install dependencies
+# 의존성 설치
 pip install -r backend/requirements.txt
 ```
 
 ### Frontend
 ```bash
-# Install dependencies
+# 의존성 설치
 cd frontend && npm install
 
-# Run dev server (proxies /api to localhost:8000)
+# 개발 서버 실행 (/api → localhost:8000 프록시)
 cd frontend && npm run dev
 
-# Build for production
+# 프로덕션 빌드
 cd frontend && npm run build
+```
+
+### Disk Agent
+```bash
+# 개발 서버 실행
+cd disk-agent && pip install -r requirements.txt
+python disk_agent.py --path /your/binaries --port 9090 --reload
 ```
 
 ### Docker
 ```bash
-./setup.sh                       # Initial setup (creates ~/binary-manager-backup/)
-docker compose up --build        # Full stack (db + app)
-docker compose up -d             # Detached
-docker compose down              # Stop
+./setup.sh                         # 초기 설정 (~/binary-manager-backup/ 생성)
+docker compose up --build          # 전체 스택
+docker compose up --build -d       # 백그라운드
+docker compose down                # 중지
+docker compose up --build backend  # 단일 서비스 재빌드
 ```
 
-## Key Design Decisions
+## 핵심 설계 결정
 
-### Retention Score Algorithm
-`score = retention_days - age_days` (i.e. remaining days)
-- Lower score = deleted first
-- Negative score means expired (deleted before unexpired builds)
-- Custom projects can have longer retention_days than defaults
+### 보관 점수 알고리즘
+`score = retention_days - age_days` (남은 일수)
+- 낮은 점수 = 먼저 삭제
+- 음수 점수 = 만료됨 (미만료 빌드보다 먼저 삭제)
+- Custom project는 더 긴 retention_days로 보호 가능
 
-### Hysteresis Cleanup (per-server)
-- Trigger cleanup at configurable % disk usage (default 90%)
-- Stop cleanup at configurable % disk usage (default 80%)
-- Prevents rapid on/off cycling
+### 히스테리시스 클린업 (서버별)
+- 설정된 디스크 사용률 초과 시 클린업 시작 (기본 90%)
+- 설정된 디스크 사용률 이하 시 클린업 중단 (기본 80%)
+- 잦은 on/off 반복 방지
 
-### Safety Guards
-- Builds modified < 10 minutes ago are skipped (upload protection)
-- WebDAV results cached for 60 seconds
+### 안전 장치
+- 최근 10분 이내 수정된 빌드는 건너뜀 (업로드 보호)
+- 빌드 목록 결과 60초 캐싱
 
-## Coding Conventions
+## 코딩 컨벤션
 
 ### Backend
-- All API routes under `/api/` prefix
-- Router files: `{domain}_router.py`
-- Service files: `{domain}_service.py`
-- All timestamps in UTC
-- Use Pydantic models for all request/response schemas
-- SQLAlchemy mapped_column style for models
+- 모든 API 라우트는 `/api/` 접두사
+- 라우터 파일: `{domain}_router.py`
+- 서비스 파일: `{domain}_service.py`
+- 모든 타임스탬프 UTC
+- 모든 요청/응답에 Pydantic 모델 사용
+- SQLAlchemy mapped_column 스타일
 
 ### Frontend
-- Functional components with hooks
-- API calls via `src/api/client.ts` (centralized Axios instance)
-- Tailwind utility classes for styling (no CSS modules)
-- lucide-react for icons
-- react-router-dom v7 for routing
+- 함수형 컴포넌트 + hooks
+- API 호출은 `src/api/client.ts` (중앙 Axios 인스턴스)
+- Tailwind 유틸리티 클래스 (CSS 모듈 없음)
+- lucide-react 아이콘
+- react-router-dom v7 라우팅
 
-## Config File (`backend/config.yaml`)
-- `binary_servers`: list of servers, each with:
-  - `name`, `webdav_url`, `disk_agent_url`, `binary_root_path`, `project_depth`
+## 설정 파일 (`backend/config.yaml`)
+- `binary_servers`: 서버 목록, 각각:
+  - `name`, `disk_agent_url`, `binary_root_path`, `project_depth`
   - `trigger_threshold_percent`, `target_threshold_percent`, `check_interval_minutes`
-  - `custom_projects`: list of {path, retention_days} for per-project overrides
-- `retention`: global defaults
-  - `default_days`: retention for non-custom projects (default: 7)
-  - `custom_default_days`: default when adding custom projects (default: 30)
-  - `log_retention_days`: cleanup log retention period (default: 30)
-- `auth`: users list [{username, password, role}], jwt_secret
+  - `custom_projects`: [{path, retention_days}] 프로젝트별 보관 기간 재정의
+- `retention`: 전역 기본값
+  - `default_days`: 비-custom 프로젝트 보관 기간 (기본: 7)
+  - `custom_default_days`: custom project 추가 시 기본값 (기본: 30)
+  - `log_retention_days`: 클린업 로그 보관 기간 (기본: 30)
+- `auth`: users [{username, password, role}], jwt_secret
 
-## Data Storage
-- Config and DB stored at `~/binary-manager-backup/`
-- `config.yaml` - runtime configuration
-- `mysql/` - MySQL data directory
-- `setup.sh` initializes the folder structure
+## 데이터 저장
+- 설정과 DB는 `~/binary-manager-backup/`에 저장
+- `config.yaml` - 런타임 설정
+- `mysql/` - MySQL 데이터 디렉토리
+- `setup.sh`로 폴더 구조 초기화
 
-## Testing
-- Unit tests focus on `retention_engine.py` score computation
-- Tests are pure functions, no mocking needed for score tests
-- Run from `backend/` directory: `python -m pytest tests/ -v`
+## 테스트
+- 단위 테스트는 `retention_engine.py` 점수 계산에 집중
+- 순수 함수 테스트, 모킹 불필요
+- `backend/` 디렉토리에서 실행: `python -m pytest tests/ -v`

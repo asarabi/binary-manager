@@ -5,11 +5,11 @@
 디스크 사용량 모니터링, 보관 정책 기반 자동 삭제, 웹 UI 대시보드 제공.
 
 ## 아키텍처
-- **Backend**: Python FastAPI (별도 관리 서버에서 실행)
+- **Backend**: Python FastAPI (관리 서버에서 실행)
 - **Frontend**: React + Vite + TypeScript + Tailwind CSS
-- **바이너리 서버 접근**: WebDAV (조회), SSH/SFTP (삭제, 디스크 확인)
-- **DB**: SQLite (삭제 이력 로그)
-- **인증**: 공유 비밀번호 → JWT 토큰
+- **Disk Agent**: FastAPI 기반 에이전트 (바이너리 서버에서 실행) — 디스크 사용량, 파일 목록/삭제 처리
+- **DB**: MySQL (삭제 이력 로그)
+- **인증**: 사용자명/비밀번호 → JWT 토큰 (admin/user 역할)
 
 ## 디렉터리 구조 (바이너리 서버)
 ```
@@ -23,50 +23,46 @@
 
 ## 핵심 삭제 알고리즘
 
-1. SSH로 디스크 사용량 확인 (`df`)
+1. Disk Agent에 디스크 사용량 조회
 2. 사용률 >= 90% 이면 정리 시작
-3. WebDAV로 전체 빌드 목록 수집 (프로젝트명, 빌드번호, 수정일)
+3. Disk Agent로 전체 빌드 목록 수집 (프로젝트명, 빌드번호, 수정일)
 4. 각 빌드에 삭제 점수 부여:
-   - 프로젝트명 → glob 패턴 매칭 → 보관 타입 결정
-   - `점수 = 타입우선순위 × 1000 + 남은보관일수 × 10`
-   - 점수가 낮을수록 먼저 삭제 (만료된 단기보관 빌드 → 미만료 단기보관 → 만료된 장기보관 → ...)
+   - `score = retention_days - age_days` (남은 일수)
+   - 점수가 낮을수록 먼저 삭제 (만료된 빌드가 음수이므로 우선 삭제)
+   - Custom project는 더 긴 retention_days를 가져 보호됨
 5. 점수 오름차순으로 빌드 삭제, 매 삭제 후 디스크 재확인
 6. 사용률 <= 80% 도달 시 중단 (히스테리시스)
 
 ## 설정 파일 형식 (`backend/config.yaml`)
 
 ```yaml
-binary_server:
-  webdav_url: "http://binary-server:8080"
-  ssh_host: "binary-server"
-  ssh_port: 22
-  ssh_username: "binmanager"
-  ssh_key_path: "/home/app/.ssh/id_rsa"
-  binary_root_path: "/data/binaries"
+demo_mode: false
 
-disk:
-  trigger_threshold_percent: 90
-  target_threshold_percent: 80
-  check_interval_minutes: 5
+binary_servers:
+  - name: "custom"
+    disk_agent_url: "http://custom-server:9090"
+    binary_root_path: "/data/binaries"
+    project_depth: 2
+    trigger_threshold_percent: 90
+    target_threshold_percent: 80
+    check_interval_minutes: 5
+    custom_projects:
+      - path: "automotive/release"
+        retention_days: 90
 
-retention_types:
-  - name: "nightly"
-    retention_days: 3
-    priority: 1          # 우선순위 낮음 (먼저 삭제)
-  - name: "release"
-    retention_days: 30
-    priority: 3          # 우선순위 높음 (나중에 삭제)
-
-project_mappings:
-  - pattern: "nightly-*"
-    type: "nightly"
-  - pattern: "release-*"
-    type: "release"
-  - pattern: "*"
-    type: "nightly"      # 기본값
+retention:
+  default_days: 7
+  custom_default_days: 30
+  log_retention_days: 30
 
 auth:
-  shared_password: "changeme"
+  users:
+    - username: "admin"
+      password: "your-password"
+      role: "admin"
+    - username: "viewer"
+      password: "viewer-password"
+      role: "user"
   jwt_secret: "generated-secret"
 ```
 
@@ -74,13 +70,20 @@ auth:
 
 ```
 binary-manager/
+├── docker-compose.yml               # db + backend + frontend + disk-agent (4 서비스)
+├── setup.sh                         # 초기 설정 스크립트
+├── disk-agent/
+│   ├── Dockerfile                   # Python 3.12 + uvicorn
+│   ├── disk_agent.py                # FastAPI: 디스크 사용량, 파일 목록/삭제
+│   └── requirements.txt             # fastapi, uvicorn
 ├── backend/
+│   ├── Dockerfile                   # Python 3.12 + uvicorn
 │   ├── app/
 │   │   ├── main.py                  # FastAPI 진입점, CORS, lifespan
 │   │   ├── config.py                # YAML 설정 로더 (Pydantic)
-│   │   ├── auth.py                  # 공유 비밀번호 JWT 인증
-│   │   ├── database.py              # SQLite + SQLAlchemy
-│   │   ├── models.py                # CleanupLog, CleanupRun 모델
+│   │   ├── auth.py                  # JWT 인증 (username/password, admin/user 역할)
+│   │   ├── database.py              # MySQL 엔진 + 세션
+│   │   ├── models.py                # CleanupRun, CleanupLog 모델
 │   │   ├── schemas.py               # API 요청/응답 스키마
 │   │   ├── routers/
 │   │   │   ├── auth_router.py       # POST /api/auth/login
@@ -90,24 +93,25 @@ binary-manager/
 │   │   │   ├── cleanup_router.py    # POST /api/cleanup/trigger
 │   │   │   └── logs_router.py       # GET /api/logs
 │   │   └── services/
-│   │       ├── webdav_service.py    # WebDAV 조회 (프로젝트/빌드 목록)
-│   │       ├── ssh_service.py       # SSH 디스크 확인, SFTP 삭제
-│   │       ├── retention_engine.py  # 정리 알고리즘 핵심 로직
-│   │       ├── scheduler_service.py # APScheduler 주기적 체크
-│   │       └── cleanup_log_service.py
+│   │       ├── disk_agent_service.py  # Disk Agent HTTP 클라이언트
+│   │       ├── retention_engine.py    # 정리 알고리즘 핵심 로직
+│   │       ├── scheduler_service.py   # APScheduler 주기적 체크
+│   │       └── cleanup_log_service.py # 정리 로그 DB 작업
 │   ├── config.yaml
 │   ├── requirements.txt
 │   └── tests/
 ├── frontend/
+│   ├── Dockerfile                   # Node 빌드 → nginx (SPA + API 프록시)
+│   ├── nginx.conf                   # /api/ → backend:8000 프록시 + SPA fallback
 │   ├── src/
-│   │   ├── App.tsx
-│   │   ├── api/                     # Axios 클라이언트
-│   │   ├── context/AuthContext.tsx
+│   │   ├── api/client.ts            # Axios 클라이언트 (JWT 인터셉터)
+│   │   ├── context/AuthContext.tsx   # 인증 상태 관리
 │   │   ├── pages/
 │   │   │   ├── LoginPage.tsx
 │   │   │   ├── DashboardPage.tsx    # 디스크 게이지, 통계 카드
 │   │   │   ├── BinaryListPage.tsx   # 프로젝트/빌드 테이블
-│   │   │   ├── SettingsPage.tsx     # 보관 정책 편집
+│   │   │   ├── ProjectDetailPage.tsx # 프로젝트별 빌드 목록
+│   │   │   ├── SettingsPage.tsx     # 서버/보관 정책 편집
 │   │   │   └── LogsPage.tsx         # 삭제 이력
 │   │   └── components/
 │   │       ├── Layout.tsx, Sidebar.tsx
@@ -116,7 +120,6 @@ binary-manager/
 │   │       └── RetentionBadge.tsx
 │   ├── package.json
 │   └── vite.config.ts
-├── docker-compose.yml
 └── README.md
 ```
 
@@ -124,23 +127,25 @@ binary-manager/
 
 | Method | Path | 설명 |
 |--------|------|------|
-| POST | `/api/auth/login` | 비밀번호 → JWT 토큰 |
-| GET | `/api/dashboard/stats` | 디스크 사용량, 프로젝트 수, 빌드 수 |
-| GET | `/api/binaries` | 전체 프로젝트 목록 (타입, 빌드 수 포함) |
-| GET | `/api/binaries/{project}` | 프로젝트 내 빌드 목록 (나이, 만료 여부) |
-| DELETE | `/api/binaries/{project}/{build}` | 특정 빌드 수동 삭제 |
+| POST | `/api/auth/login` | 사용자명/비밀번호 → JWT 토큰 + 역할 |
+| GET | `/api/dashboard/stats` | 서버별 디스크 사용량, 프로젝트/빌드 수 |
+| GET | `/api/binaries` | 전체 프로젝트 목록 (보관 정보, 서버 필터) |
+| GET | `/api/binaries/detail/{project}` | 프로젝트 내 빌드 목록 (남은 일수 포함) |
+| DELETE | `/api/binaries/detail/{project}/{build}` | 특정 빌드 수동 삭제 |
 | GET | `/api/config` | 현재 설정 조회 |
-| PUT | `/api/config` | 설정 수정 (보관 정책, 임계값 등) |
+| PUT | `/api/config` | 설정 수정 (admin 전용) |
+| POST | `/api/config/test-connection` | 서버 연결 테스트 (admin 전용) |
 | POST | `/api/cleanup/trigger` | 수동 정리 실행 (dry_run 지원) |
 | GET | `/api/cleanup/status` | 정리 진행 상태 |
-| GET | `/api/logs/runs` | 정리 실행 이력 |
-| GET | `/api/logs` | 삭제 상세 이력 |
+| GET | `/api/logs/runs` | 정리 실행 이력 (페이지네이션) |
+| GET | `/api/logs` | 삭제 상세 이력 (페이지네이션) |
 | GET | `/api/health` | 헬스 체크 |
 
 ## 주요 의존성
 
-**Backend**: fastapi, uvicorn, python-jose, pyyaml, webdavclient3, paramiko, apscheduler, sqlalchemy
+**Backend**: fastapi, uvicorn, python-jose, pyyaml, httpx, apscheduler, sqlalchemy, pymysql
 **Frontend**: react, react-router-dom, axios, recharts, tailwindcss, lucide-react
+**Disk Agent**: fastapi, uvicorn
 
 ## 구현 순서
 
@@ -150,9 +155,9 @@ binary-manager/
 3. `database.py` + `models.py`
 4. `auth.py` + `auth_router.py`
 
-### Phase 2: 서버 연동 (WebDAV, SSH)
-5. `ssh_service.py` (디스크 사용량, 재귀 삭제)
-6. `webdav_service.py` (프로젝트/빌드 목록)
+### Phase 2: Disk Agent + 서버 연동
+5. `disk_agent.py` (디스크 사용량, 파일 목록/삭제 API)
+6. `disk_agent_service.py` (Backend → Disk Agent HTTP 클라이언트)
 7. `dashboard_router.py` + `binaries_router.py`
 
 ### Phase 3: 정리 엔진
@@ -168,28 +173,25 @@ binary-manager/
 15. Layout + Sidebar
 16. DashboardPage (디스크 게이지, 통계 카드, 정리 버튼)
 17. BinaryListPage + ProjectDetailPage
-18. SettingsPage (보관 정책 편집)
+18. SettingsPage (서버 관리, 보관 정책 편집)
 19. LogsPage
 
 ### Phase 5: 배포
-20. Dockerfile (backend, frontend)
-21. docker-compose.yml
-22. nginx 설정 (프론트엔드 정적 파일 + API 프록시)
+20. Dockerfile (backend, frontend, disk-agent 각각)
+21. docker-compose.yml (db + backend + frontend + disk-agent)
 
 ## 검증 방법
 
 1. **단위 테스트**: `retention_engine.py`의 점수 산정 및 삭제 순서 테스트
-2. **통합 테스트**: 모의 WebDAV/SSH 서버로 전체 플로우 테스트
-3. **수동 테스트**:
+2. **수동 테스트**:
    - 웹 UI 로그인 → 대시보드 확인
    - 바이너리 목록 조회, 프로젝트별 빌드 확인
    - dry_run으로 정리 시뮬레이션 실행
    - 설정 변경 후 저장 및 반영 확인
-4. **Docker**: `docker-compose up`으로 전체 스택 실행 확인
+3. **Docker**: `docker compose up --build`로 전체 스택 실행 확인
 
 ## 주의사항
 
-- rsync 진행 중인 빌드 보호: 수정일이 10분 이내인 빌드는 삭제 건너뜀
-- WebDAV 성능: 빌드 목록 캐싱 (TTL 60초)
-- SSH 연결 풀링: 반복 연결 오버헤드 최소화
+- 업로드 중인 빌드 보호: 수정일이 10분 이내인 빌드는 삭제 건너뜀
+- 빌드 목록 캐싱 (TTL 60초)
 - 시간대: 모든 타임스탬프 UTC 기준 처리

@@ -11,8 +11,7 @@ Browser ──:8080──▶ nginx ──/api/*──▶ FastAPI ──▶ MySQL
                      │                  │
                      │              Retention Engine ◀── APScheduler (주기적)
                      │                  │
-                     │                  ├──WebDAV────▶ 바이너리 서버 (목록/삭제)
-                     │                  └──HTTP──────▶ Disk Agent   (디스크 사용량)
+                     │                  └──HTTP──────▶ Disk Agent (디스크 사용량/파일 관리)
                      │
                      └── React SPA (정적 파일 서빙)
 ```
@@ -22,10 +21,10 @@ Browser ──:8080──▶ nginx ──/api/*──▶ FastAPI ──▶ MySQL
 ```
 1. Disk Agent에 디스크 사용량 조회 ─────────────▶ 92% 응답
 2. 90% 초과 → 클린업 시작
-3. WebDAV로 빌드 목록 조회 (mtime 포함)
+3. Disk Agent로 빌드 목록 조회 (mtime 포함)
 4. score = retention_days − age_days (남은 일수) 계산
 5. score 낮은 순서대로 반복:
-   ├── WebDAV DELETE (빌드 삭제)
+   ├── Disk Agent DELETE (빌드 삭제)
    ├── Disk Agent로 디스크 재확인 ──────────────▶ 83% 응답
    └── 80% 이하면 중단
 6. 결과를 MySQL에 저장 (cleanup_runs, cleanup_logs)
@@ -33,34 +32,33 @@ Browser ──:8080──▶ nginx ──/api/*──▶ FastAPI ──▶ MySQL
 
 ### 컴포넌트 역할
 
-- **app 컨테이너**: nginx + uvicorn을 supervisord로 단일 컨테이너에서 실행
-  - **nginx**: React SPA를 서빙하고 `/api/*` 요청을 로컬 uvicorn으로 리버스 프록시
-  - **FastAPI**: 보관 정책 로직, 스케줄링, 정리 작업 오케스트레이션 담당
-- **WebDAV**: 바이너리 서버의 빌드 목록 조회 및 삭제에 사용
-- **Disk Agent**: 바이너리 서버에 설치하는 경량 HTTP 에이전트 (디스크 사용량/디렉토리 크기 조회)
+- **frontend 컨테이너**: nginx로 React SPA를 서빙하고 `/api/*` 요청을 backend 컨테이너로 리버스 프록시
+- **backend 컨테이너**: FastAPI + uvicorn. 보관 정책 로직, 스케줄링, 정리 작업 오케스트레이션 담당
+- **disk-agent 컨테이너**: FastAPI 기반 에이전트. 디스크 사용량 조회, 파일 목록/삭제를 모두 처리 (바이너리 서버에 배포)
 - **MySQL**: 정리 실행 이력 및 로그 저장 (별도 컨테이너로 실행)
 
 ## 기술 스택
 
 | 계층 | 기술 |
 |---|---|
-| Backend | Python 3.12, FastAPI, SQLAlchemy (MySQL), webdavclient3, httpx, APScheduler |
+| Backend | Python 3.12, FastAPI, SQLAlchemy (MySQL), httpx, APScheduler |
 | Frontend | React 18, TypeScript, Vite, Tailwind CSS, Recharts, lucide-react |
-| Infra | Docker Compose, nginx, supervisord |
+| Disk Agent | Python 3.12, FastAPI, uvicorn |
+| Infra | Docker Compose, nginx |
 
 ## 프로젝트 구조
 
 ```
-Dockerfile                       # 멀티스테이지 빌드 (프론트엔드 빌드 + Python/nginx/supervisord)
-nginx.conf                       # 리버스 프록시 (/api/ → localhost:8000) + SPA 서빙
-supervisord.conf                 # 단일 컨테이너에서 uvicorn + nginx 실행
-docker-compose.yml               # db + app (2개 서비스)
+docker-compose.yml               # db + backend + frontend + disk-agent (4개 서비스)
 setup.sh                         # 초기 설정 스크립트
 
 disk-agent/
-  disk_agent.py                  # 바이너리 서버용 디스크 사용량 HTTP 에이전트 (stdlib only)
+  Dockerfile                     # Python 3.12 + uvicorn
+  disk_agent.py                  # FastAPI 기반 디스크 사용량 에이전트
+  requirements.txt               # fastapi, uvicorn
 
 backend/
+  Dockerfile                     # Python 3.12 + uvicorn
   app/
     main.py                  # FastAPI 진입점, CORS, lifespan
     config.py                # YAML 설정 로더 (Pydantic 모델)
@@ -77,8 +75,7 @@ backend/
       logs_router.py         # 정리 실행/로그 이력
     services/
       retention_engine.py    # 보관 점수 계산 및 정리 로직
-      webdav_service.py      # WebDAV 파일 목록/삭제 (캐싱 포함)
-      disk_agent_service.py  # Disk Agent HTTP 클라이언트 (디스크 사용량/크기)
+      disk_agent_service.py   # Disk Agent HTTP 클라이언트 (디스크/파일/삭제)
       scheduler_service.py   # APScheduler 주기적 디스크 점검
       cleanup_log_service.py # 정리 실행/로그 DB 작업
   tests/
@@ -87,6 +84,8 @@ backend/
   requirements.txt
 
 frontend/
+  Dockerfile                     # Node 빌드 → nginx (SPA 서빙 + API 프록시)
+  nginx.conf                     # /api/ → backend:8000 프록시 + SPA fallback
   src/
     api/client.ts            # Axios 인스턴스 (JWT 인터셉터)
     context/AuthContext.tsx   # 인증 상태 관리
@@ -138,58 +137,30 @@ docker compose down
 
 #### 바이너리 서버 (각 서버마다 반복)
 
-각 바이너리 서버에 WebDAV와 Disk Agent를 설치합니다.
+각 바이너리 서버에 Disk Agent를 설치합니다. Disk Agent가 디스크 사용량 조회, 파일 목록, 빌드 삭제를 모두 처리합니다.
 
-**1) WebDAV** — 빌드 목록 조회 및 삭제용
-
-```bash
-sudo apt install nginx nginx-extras
-```
-
-`/etc/nginx/sites-available/webdav` 작성:
-
-```nginx
-server {
-    listen 8080;
-    root /data/binaries;
-
-    location / {
-        dav_methods PUT DELETE MKCOL COPY MOVE;
-        dav_ext_methods PROPFIND OPTIONS;
-        autoindex on;
-    }
-}
-```
+**Disk Agent 설치**
 
 ```bash
-sudo ln -s /etc/nginx/sites-available/webdav /etc/nginx/sites-enabled/
-sudo systemctl restart nginx
+# 관리 서버에서 바이너리 서버로 disk-agent 디렉토리 복사
+scp -r disk-agent/ user@binary-server:~/disk-agent
+
+# 바이너리 서버에서 빌드 및 실행
+cd ~/disk-agent
+docker build -t disk-agent .
+docker run -d --name disk-agent --restart unless-stopped \
+  -v /data/binaries:/data/binaries \
+  -e DISK_AGENT_PATH=/data/binaries \
+  -p 9090:9090 \
+  disk-agent
 ```
 
-**2) Disk Agent** — 디스크 사용량 조회용 (Python 표준 라이브러리만 사용)
+**동작 확인**
 
 ```bash
-# 관리 서버에서 바이너리 서버로 파일 복사
-scp disk-agent/disk_agent.py disk-agent/disk-agent.service user@binary-server:~/
-
-# 바이너리 서버에서 설치
-sudo mkdir -p /opt/disk-agent
-sudo cp ~/disk_agent.py /opt/disk-agent/
-sudo cp ~/disk-agent.service /etc/systemd/system/
-
-# 필요 시 --path, --port 수정
-sudo vi /etc/systemd/system/disk-agent.service
-
-# 서비스 등록 및 시작
-sudo systemctl enable --now disk-agent
-```
-
-**3) 동작 확인**
-
-```bash
-curl http://localhost:9090/health          # Disk Agent
+curl http://localhost:9090/health          # 헬스 체크
 curl http://localhost:9090/disk-usage      # 디스크 사용량
-curl -X PROPFIND http://localhost:8080/    # WebDAV
+curl http://localhost:9090/files/list      # 파일 목록
 ```
 
 #### 관리 서버
@@ -211,7 +182,6 @@ retention:
 
 binary_servers:
   - name: "custom"
-    webdav_url: "http://custom-server:8080"
     disk_agent_url: "http://custom-server:9090"
     binary_root_path: "/data/binaries"
     project_depth: 2
@@ -253,8 +223,7 @@ docker compose down
 |---|---|---|
 | `demo_mode` | `true/false` | UI 테스트용 가짜 데이터 활성화 |
 | `binary_servers[]` | `name` | 서버 식별 이름 |
-| | `webdav_url` | 파일 목록 조회/삭제용 WebDAV 엔드포인트 |
-| | `disk_agent_url` | 디스크 사용량 조회용 Disk Agent 엔드포인트 |
+| | `disk_agent_url` | Disk Agent 엔드포인트 (디스크 사용량/파일 관리) |
 | | `binary_root_path` | 서버상 바이너리 루트 디렉토리 |
 | | `project_depth` | 프로젝트 디렉토리 깊이 (기본값: 1) |
 | | `trigger_threshold_percent` | 정리 시작 디스크 사용률 (기본값: 90) |
@@ -292,7 +261,7 @@ score = retention_days - age_days  (남은 일수)
 ### 안전 장치
 
 - **업로드 보호**: 최근 10분 이내 수정된 빌드는 건너뜀 (업로드 중인 빌드 보호)
-- **WebDAV 캐시**: 파일 목록 결과를 60초간 캐싱
+- **빌드 목록 캐시**: 파일 목록 결과를 60초간 캐싱
 
 ## API 엔드포인트
 
@@ -316,41 +285,82 @@ health와 login을 제외한 모든 엔드포인트는 `Authorization: Bearer <t
 
 ## 개발
 
-### 개발 모드
+### 로컬 개발 (Docker 없이)
 
-로컬에서 백엔드와 프론트엔드를 각각 실행하여 개발합니다:
+각 서비스를 별도 터미널에서 실행합니다. 코드 변경 시 자동 리로드됩니다.
 
 ```bash
-# 백엔드 (터미널 1)
-cd backend && uvicorn app.main:app --reload --port 8000
+# 터미널 1: 백엔드 (auto-reload)
+cd backend
+pip install -r requirements.txt          # 최초 1회
+uvicorn app.main:app --reload --port 8000
 
-# 프론트엔드 (터미널 2)
-cd frontend && npm run dev
+# 터미널 2: 프론트엔드 (Vite dev server, /api → localhost:8000 자동 프록시)
+cd frontend
+npm install                              # 최초 1회
+npm run dev                              # http://localhost:3000
+
+# 터미널 3: disk-agent (필요 시)
+cd disk-agent
+pip install -r requirements.txt          # 최초 1회
+python disk_agent.py --path /your/binaries --port 9090 --reload
+# 또는
+DISK_AGENT_PATH=/your/binaries uvicorn disk_agent:app --reload --port 9090
 ```
 
-### 배포
+> **참고**: 프론트엔드는 Vite 프록시(`vite.config.ts`)가 `/api` 요청을 `localhost:8000`으로 전달하므로, 백엔드만 실행하면 바로 연동됩니다.
 
-확인이 완료되면 Docker 이미지로 빌드하여 배포합니다:
+### Docker로 개발
+
+전체 스택을 Docker로 실행하거나, 특정 서비스만 빌드/재시작할 수 있습니다.
+
+```bash
+# 전체 빌드 및 실행
+docker compose up --build
+
+# 백그라운드 실행
+docker compose up --build -d
+
+# 특정 서비스만 재빌드 (다른 서비스는 그대로)
+docker compose up --build backend
+docker compose up --build frontend
+
+# 로그 확인
+docker compose logs -f                   # 전체
+docker compose logs -f backend           # 백엔드만
+docker compose logs -f frontend          # 프론트엔드만
+```
+
+#### 서비스 구성
+
+| 서비스 | 컨테이너 | 포트 | 설명 |
+|--------|----------|------|------|
+| `db` | binary-manager-db | 3306 (내부) | MySQL 8.0 |
+| `backend` | binary-manager-backend | 8000 (내부) | FastAPI + uvicorn |
+| `frontend` | binary-manager-frontend | 8080 → 80 | nginx (SPA + API 프록시) |
+| `disk-agent` | binary-manager-disk-agent | 9090 | FastAPI 디스크 에이전트 |
+
+> **접속**: http://localhost:8080 → `cicd` / `tmxkqjrtm1@` (admin) 또는 `share` / `share` (user)
+
+#### 변경 반영 방법
+
+| 변경 대상 | 반영 방법 |
+|-----------|----------|
+| `backend/app/**/*.py` | `docker compose up --build backend -d` |
+| `frontend/src/**` | `docker compose up --build frontend -d` |
+| `config.yaml` | `docker compose restart backend` |
+| `requirements.txt` | `docker compose up --build backend -d` |
+| `package.json` | `docker compose up --build frontend -d` |
+
+### 배포
 
 ```bash
 # 최초 1회
 ./setup.sh
 
-# 빌드 및 실행
+# 빌드 및 백그라운드 실행
 docker compose up --build -d
-
-# 로그 확인
-docker compose logs -f app
 ```
-
-http://localhost:8080 접속 → `cicd` / `tmxkqjrtm1@` (admin) 또는 `share` / `share` (user)로 로그인
-
-| 변경 대상 | 반영 방식 |
-|-----------|----------|
-| `backend/app/**/*.py` | `docker compose up --build -d` |
-| `frontend/src/**` | `docker compose up --build -d` |
-| `config.yaml` | `docker compose restart app` |
-| `requirements.txt` / `package.json` | `docker compose up --build -d` |
 
 ### 테스트
 
@@ -358,13 +368,13 @@ http://localhost:8080 접속 → `cicd` / `tmxkqjrtm1@` (admin) 또는 `share` /
 cd backend && python -m pytest tests/ -v
 ```
 
-### Docker 명령어
+### Docker 주요 명령어
 
 ```bash
-docker compose up --build -d    # 빌드 및 시작
+docker compose up --build -d    # 전체 빌드 및 시작
 docker compose down             # 중지 및 제거
 docker compose ps               # 컨테이너 상태 확인
-docker compose logs -f app      # 앱 로그 실시간 확인
+docker compose logs -f backend  # 백엔드 로그 실시간 확인
 ```
 
 ## UI 페이지

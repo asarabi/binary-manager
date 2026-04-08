@@ -18,9 +18,9 @@ services:
       timeout: 5s
       retries: 5
 
-  app:
-    build: .
-    container_name: binary-manager-app
+  backend:
+    build: ./backend
+    container_name: binary-manager-backend
     restart: unless-stopped
     depends_on:
       db:
@@ -30,5 +30,25 @@ services:
     environment:
       - CONFIG_PATH=/app/config.yaml
       - DATABASE_URL=mysql+pymysql://binary_manager:binary_manager@db:3306/binary_manager
+    expose:
+      - "8000"
+
+  frontend:
+    build: ./frontend
+    container_name: binary-manager-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
     ports:
       - "${PORT:-8080}:80"
+
+  disk-agent:
+    build: ./disk-agent
+    container_name: binary-manager-disk-agent
+    restart: unless-stopped
+    volumes:
+      - ${DISK_AGENT_PATH:-/data/binaries}:/data/binaries
+    environment:
+      - DISK_AGENT_PATH=/data/binaries
+    ports:
+      - "${DISK_AGENT_PORT:-9090}:9090"

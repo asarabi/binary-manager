@@ -29,6 +29,8 @@ services:
       - DATABASE_URL=mysql+pymysql://binary_manager:binary_manager@db:3306/binary_manager
     expose:
       - "8000"
+    ports:
+      - "${BACKEND_PORT:-9093}:8000"
 
   frontend:
     build: ./frontend
@@ -37,7 +39,7 @@ services:
     depends_on:
       - backend
     ports:
-      - "${PORT:-8080}:80"
+      - "${PORT:-9092}:80"
 
   disk-agent:
     build: ./disk-agent
@@ -48,4 +50,4 @@ services:
     environment:
       - DISK_AGENT_PATH=/data/binaries
     ports:
-      - "${DISK_AGENT_PORT:-9090}:9090"
+      - "${DISK_AGENT_PORT:-9091}:9090"

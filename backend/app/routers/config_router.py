@@ -2,7 +2,6 @@ import logging
 
 import httpx
 from fastapi import APIRouter, Depends
-from webdav3.client import Client as WebDAVClient
 
 from ..auth import get_current_user, require_admin
 from ..config import (
@@ -41,7 +40,6 @@ def update_config(update: ConfigUpdate, user: str = Depends(require_admin)):
         config.binary_servers = [
             BinaryServerConfig(
                 name=s.name,
-                webdav_url=s.webdav_url,
                 disk_agent_url=s.disk_agent_url,
                 binary_root_path=s.binary_root_path,
                 project_depth=s.project_depth,
@@ -72,31 +70,33 @@ def update_config(update: ConfigUpdate, user: str = Depends(require_admin)):
 
 @router.post("/test-connection")
 def test_connection(user: str = Depends(require_admin)):
-    """Test WebDAV and Disk Agent connectivity for all servers."""
+    """Test Disk Agent connectivity for all servers."""
     config = get_config()
     results = []
 
     for server in config.binary_servers:
-        result = {"name": server.name, "webdav": {"ok": False, "message": ""}, "disk_agent": {"ok": False, "message": ""}}
+        result = {"name": server.name, "disk_agent": {"ok": False, "message": ""}}
 
-        # Test WebDAV
-        try:
-            wc = WebDAVClient({
-                "webdav_hostname": server.webdav_url,
-                "webdav_timeout": 10,
-            })
-            wc.list(server.binary_root_path.rstrip("/") + "/")
-            result["webdav"] = {"ok": True, "message": "Connected"}
-        except Exception as e:
-            result["webdav"] = {"ok": False, "message": str(e)}
-
-        # Test Disk Agent
+        # Test Disk Agent health
         try:
             resp = httpx.get(f"{server.disk_agent_url.rstrip('/')}/health", timeout=10)
             resp.raise_for_status()
             result["disk_agent"] = {"ok": True, "message": "Connected"}
         except Exception as e:
             result["disk_agent"] = {"ok": False, "message": str(e)}
+
+        # Test file listing
+        try:
+            resp = httpx.get(
+                f"{server.disk_agent_url.rstrip('/')}/files/list",
+                params={"path": "", "depth": 1},
+                timeout=10,
+            )
+            resp.raise_for_status()
+            entries = resp.json().get("entries", [])
+            result["file_list"] = {"ok": True, "message": f"{len(entries)} directories found"}
+        except Exception as e:
+            result["file_list"] = {"ok": False, "message": str(e)}
 
         results.append(result)
 

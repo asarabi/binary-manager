@@ -13,7 +13,6 @@ class CustomProject(BaseModel):
 
 class BinaryServerConfig(BaseModel):
     name: str = "default"
-    webdav_url: str = "http://binary-server:8080"
     disk_agent_url: str = "http://binary-server:9090"
     binary_root_path: str = "/data/binaries"
     project_depth: int = 1

@@ -8,7 +8,7 @@ from ..config import get_config
 from ..database import get_db
 from ..models import CleanupLog
 from ..schemas import BuildInfo, ProjectDetail, ProjectInfo
-from ..services import disk_agent_service, webdav_service
+from ..services import disk_agent_service
 from ..services.retention_engine import get_retention_days, is_custom_project
 
 router = APIRouter(prefix="/api/binaries", tags=["binaries"])
@@ -26,10 +26,10 @@ def list_projects(
 
     result = []
     for srv in servers:
-        projects = webdav_service.list_projects(srv)
+        projects = disk_agent_service.list_projects(srv)
         for name in projects:
             retention = get_retention_days(srv, name)
-            builds = webdav_service.list_builds(srv, name)
+            builds = disk_agent_service.list_builds(srv, name)
             build_numbers = [b["build_number"] for b in builds]
             result.append(
                 ProjectInfo(
@@ -55,7 +55,7 @@ def get_project_builds(
     srv = _find_server(config, server)
 
     retention = get_retention_days(srv, project)
-    builds = webdav_service.list_builds(srv, project)
+    builds = disk_agent_service.list_builds(srv, project)
 
     now = datetime.utcnow()
     build_infos = []
@@ -94,12 +94,12 @@ def delete_build(
     config = get_config()
     srv = _find_server(config, server)
 
-    if not webdav_service.build_exists(srv, project, build):
+    if not disk_agent_service.build_exists(srv, project, build):
         raise HTTPException(status_code=404, detail="Build not found")
 
     rel_path = f"{project}/{build}"
     size = disk_agent_service.get_directory_size(srv, rel_path)
-    success = webdav_service.delete_build(srv, project, build)
+    success = disk_agent_service.delete_build(srv, project, build)
     if not success:
         raise HTTPException(status_code=500, detail="Failed to delete build")
 
@@ -117,7 +117,7 @@ def delete_build(
     db.add(log)
     db.commit()
 
-    webdav_service.invalidate_cache()
+    disk_agent_service.invalidate_cache()
     return {"message": f"Deleted {project}/{build}", "size_bytes": size}
 
 

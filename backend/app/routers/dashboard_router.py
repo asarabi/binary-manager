@@ -6,7 +6,7 @@ from ..config import get_config
 from ..database import get_db
 from ..models import CleanupRun
 from ..schemas import DashboardStats, DiskUsage, ServerStats
-from ..services import disk_agent_service, webdav_service
+from ..services import disk_agent_service
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
@@ -20,10 +20,10 @@ def get_stats(user: str = Depends(get_current_user), db: Session = Depends(get_d
         disk_info = disk_agent_service.get_disk_usage(server)
         disk = DiskUsage(**disk_info)
 
-        projects = webdav_service.list_projects(server)
+        projects = disk_agent_service.list_projects(server)
         build_count = 0
         for project in projects:
-            builds = webdav_service.list_builds(server, project)
+            builds = disk_agent_service.list_builds(server, project)
             build_count += len(builds)
 
         server_stats.append(

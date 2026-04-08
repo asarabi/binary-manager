@@ -73,7 +73,6 @@ class CustomProjectSchema(BaseModel):
 
 class BinaryServerSchema(BaseModel):
     name: str = "default"
-    webdav_url: str = ""
     disk_agent_url: str = ""
     binary_root_path: str = "/data/binaries"
     project_depth: int = 1

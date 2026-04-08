@@ -7,7 +7,6 @@ retention:
 
 binary_servers:
   - name: "custom"
-    webdav_url: "http://custom-server:8080"
     disk_agent_url: "http://custom-server:9090"
     binary_root_path: "/data/binaries"
     project_depth: 2
@@ -20,7 +19,6 @@ binary_servers:
       - path: "automotive/release"
         retention_days: 90
   - name: "mobile"
-    webdav_url: "http://mobile-server:8080"
     disk_agent_url: "http://mobile-server:9090"
     binary_root_path: "/data/binaries"
     project_depth: 1

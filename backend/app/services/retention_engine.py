@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from ..config import BinaryServerConfig, get_config
 from ..models import CleanupLog, CleanupRun
-from . import disk_agent_service, webdav_service
+from . import disk_agent_service
 
 logger = logging.getLogger(__name__)
 
@@ -49,12 +49,12 @@ def compute_score(retention_days: int, age_days: float) -> float:
 def _collect_all_builds(server: BinaryServerConfig) -> list[dict]:
     """Collect all builds from all projects on a server with scoring info."""
     now = datetime.utcnow()
-    projects = webdav_service.list_projects(server)
+    projects = disk_agent_service.list_projects(server)
     all_builds = []
 
     for project in projects:
         retention_days = get_retention_days(server, project)
-        builds = webdav_service.list_builds(server, project)
+        builds = disk_agent_service.list_builds(server, project)
 
         for build in builds:
             modified = build["modified_at"]
@@ -137,7 +137,7 @@ def _run_cleanup_for_server(
         logger.info(_progress)
 
         if not dry_run:
-            success = webdav_service.delete_build(server, build["project"], build["build_number"])
+            success = disk_agent_service.delete_build(server, build["project"], build["build_number"])
             if not success:
                 logger.error("Failed to delete %s/%s on %s", build["project"], build["build_number"], server.name)
                 continue
@@ -207,7 +207,7 @@ def run_cleanup(db: Session, trigger: str = "manual", dry_run: bool = False) -> 
         if not dry_run and first_server:
             final_disk = disk_agent_service.get_disk_usage(first_server)
             run.disk_usage_after = final_disk["usage_percent"]
-            webdav_service.invalidate_cache()
+            disk_agent_service.invalidate_cache()
         else:
             run.disk_usage_after = disk_info["usage_percent"]
 

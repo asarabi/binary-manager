@@ -26,19 +26,6 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def init_db():
     Base.metadata.create_all(bind=engine)
-    _migrate(engine)
-
-
-def _migrate(eng):
-    """Apply schema migrations for columns added after initial release."""
-    from sqlalchemy import text
-    with eng.begin() as conn:
-        try:
-            conn.execute(text(
-                "ALTER TABLE cleanup_logs ADD COLUMN server_name VARCHAR(100) NOT NULL DEFAULT '' AFTER deleted_at"
-            ))
-        except Exception:
-            pass  # column already exists
 
 
 def get_db():
